@@ -3,13 +3,14 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import pino from "pino";
 import puppeteer from "puppeteer";
-import Database from "better-sqlite3";
+import pg from "pg";
 import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 
+const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const DATA_DIR = path.join(__dirname, "data");
@@ -17,78 +18,118 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
 const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 
-// ─── SQLite Database ────────────────────────────────────────────
-const db = new Database(path.join(DATA_DIR, "pipeline.db"));
+const DATABASE_URL = process.env.DATABASE_URL || "postgresql://user:pass@localhost:5432/lead_pipeline";
+const pool = new Pool({ connectionString: DATABASE_URL, max: 10 });
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS businesses (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    category TEXT DEFAULT '',
-    address TEXT DEFAULT '',
-    city TEXT DEFAULT '',
-    phone TEXT DEFAULT '',
-    rating TEXT DEFAULT '',
-    reviews TEXT DEFAULT '',
-    website_url TEXT DEFAULT '',
-    website_status TEXT DEFAULT 'unchecked',
-    website_checked_at TEXT DEFAULT '',
-    location_query TEXT DEFAULT '',
-    source TEXT DEFAULT 'Google Maps',
-    scraped_on TEXT DEFAULT '',
-    pipeline_status TEXT DEFAULT 'not_contacted',
-    pipeline_updated_at TEXT DEFAULT '',
-    notes TEXT DEFAULT '',
-    message_sent TEXT DEFAULT '',
-    message_sent_at TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now'))
-  );
+// ─── PostgreSQL Database ──────────────────────────────────────────
+async function initDb() {
+  // Auto-create database if it doesn't exist
+  const dbUrl = new URL(DATABASE_URL);
+  const dbName = dbUrl.pathname.replace(/^\//, "");
+  try {
+    await pool.query("SELECT 1");
+  } catch (err) {
+    if (err.code === "3D000") {
+      dbUrl.pathname = "/postgres";
+      const adminPool = new Pool({ connectionString: dbUrl.toString() });
+      try {
+        await adminPool.query(`CREATE DATABASE "${dbName}"`);
+        logger.info({ database: dbName }, "created database");
+      } finally {
+        await adminPool.end();
+      }
+    } else {
+      throw err;
+    }
+  }
 
-  CREATE TABLE IF NOT EXISTS send_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    business_id TEXT,
-    business_name TEXT,
-    phone TEXT,
-    status TEXT,
-    reason TEXT DEFAULT '',
-    sent_at TEXT DEFAULT (datetime('now'))
-  );
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS businesses (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      category TEXT DEFAULT '',
+      address TEXT DEFAULT '',
+      city TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      rating TEXT DEFAULT '',
+      reviews TEXT DEFAULT '',
+      website_url TEXT DEFAULT '',
+      website_status TEXT DEFAULT 'unchecked',
+      website_checked_at TEXT DEFAULT '',
+      location_query TEXT DEFAULT '',
+      source TEXT DEFAULT 'Google Maps',
+      scraped_on TEXT DEFAULT '',
+      pipeline_status TEXT DEFAULT 'not_contacted',
+      pipeline_updated_at TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      message_sent TEXT DEFAULT '',
+      message_sent_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (NOW())
+    )
+  `);
 
-  CREATE TABLE IF NOT EXISTS config (
-    key TEXT PRIMARY KEY,
-    value TEXT
-  );
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS send_log (
+      id SERIAL PRIMARY KEY,
+      business_id TEXT,
+      business_name TEXT,
+      phone TEXT,
+      status TEXT,
+      reason TEXT DEFAULT '',
+      sent_at TEXT DEFAULT (NOW())
+    )
+  `);
 
-  CREATE TABLE IF NOT EXISTS pipeline_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    business_id TEXT,
-    business_name TEXT,
-    old_status TEXT,
-    new_status TEXT,
-    changed_at TEXT DEFAULT (datetime('now'))
-  );
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS config (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `);
 
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
-`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pipeline_history (
+      id SERIAL PRIMARY KEY,
+      business_id TEXT,
+      business_name TEXT,
+      old_status TEXT,
+      new_status TEXT,
+      changed_at TEXT DEFAULT (NOW())
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT DEFAULT (NOW())
+    )
+  `);
+
+  // Column migrations
+  for (const [column, definition] of [
+    ["website_checked_at", "TEXT DEFAULT ''"],
+    ["pipeline_updated_at", "TEXT DEFAULT ''"],
+  ]) {
+    const { rows } = await pool.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_name = 'businesses' AND column_name = $1",
+      [column]
+    );
+    if (rows.length === 0) {
+      await pool.query(`ALTER TABLE businesses ADD COLUMN ${column} ${definition}`);
+    }
+  }
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_business_phone_nonempty ON businesses(phone) WHERE phone != ''
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_business_name_phone_nonempty ON businesses(LOWER(name), phone) WHERE name != '' AND phone != ''
+  `);
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || "lp-secret-change-in-production";
-
-for (const [column, definition] of [
-  ["website_checked_at", "TEXT DEFAULT ''"],
-  ["pipeline_updated_at", "TEXT DEFAULT ''"],
-]) {
-  const exists = db.prepare("PRAGMA table_info(businesses)").all().some(c => c.name === column);
-  if (!exists) db.exec(`ALTER TABLE businesses ADD COLUMN ${column} ${definition}`);
-}
-db.exec(`
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_business_phone_nonempty ON businesses(phone) WHERE phone != '';
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_business_name_phone_nonempty ON businesses(LOWER(name), phone) WHERE name != '' AND phone != '';
-`);
 
 app.use(cors());
 app.use(express.json());
@@ -152,10 +193,10 @@ app.post("/api/auth/register", async (req, res) => {
     if (typeof username !== "string" || typeof password !== "string") return res.status(400).json({ error: "Username and password must be strings" });
     if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
     const normalized = username.toLowerCase().trim();
-    const existing = db.prepare("SELECT id FROM users WHERE username = ?").get(normalized);
-    if (existing) return res.status(409).json({ error: "Username already taken" });
+    const { rows: existing } = await pool.query("SELECT id FROM users WHERE username = $1", [normalized]);
+    if (existing.length > 0) return res.status(409).json({ error: "Username already taken" });
     const password_hash = await bcrypt.hash(password, 10);
-    db.prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)").run(normalized, password_hash);
+    await pool.query("INSERT INTO users (username, password_hash) VALUES ($1, $2)", [normalized, password_hash]);
     const token = jwt.sign({ username: normalized }, JWT_SECRET, { expiresIn: "7d" });
     logger.info({ username: normalized }, "user registered");
     res.json({ token, user: { username: normalized } });
@@ -171,7 +212,8 @@ app.post("/api/auth/login", async (req, res) => {
     if (!username || !password) return res.status(400).json({ error: "Username and password are required" });
     if (typeof username !== "string" || typeof password !== "string") return res.status(400).json({ error: "Username and password must be strings" });
     const normalized = username.toLowerCase().trim();
-    const user = db.prepare("SELECT * FROM users WHERE username = ?").get(normalized);
+    const { rows } = await pool.query("SELECT * FROM users WHERE username = $1", [normalized]);
+    const user = rows[0];
     if (!user) return res.status(401).json({ error: "Invalid username or password" });
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: "Invalid username or password" });
@@ -193,11 +235,12 @@ app.post("/api/auth/change-password", requireAuth, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) return res.status(400).json({ error: "Current password and new password are required" });
     if (newPassword.length < 6) return res.status(400).json({ error: "New password must be at least 6 characters" });
-    const user = db.prepare("SELECT * FROM users WHERE username = ?").get(req.user.username);
+    const { rows } = await pool.query("SELECT * FROM users WHERE username = $1", [req.user.username]);
+    const user = rows[0];
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
     if (!valid) return res.status(401).json({ error: "Current password is incorrect" });
     const password_hash = await bcrypt.hash(newPassword, 10);
-    db.prepare("UPDATE users SET password_hash = ? WHERE username = ?").run(password_hash, req.user.username);
+    await pool.query("UPDATE users SET password_hash = $1 WHERE username = $2", [password_hash, req.user.username]);
     logger.info({ username: user.username }, "password changed");
     res.json({ ok: true });
   } catch (err) {
@@ -210,55 +253,68 @@ app.post("/api/auth/change-password", requireAuth, async (req, res) => {
 app.use("/api", requireAuth);
 
 // ─── Config endpoints ────────────────────────────────────────────
-app.get("/api/config", (req, res) => {
-  const rows = db.prepare("SELECT key, value FROM config").all();
+app.get("/api/config", async (req, res) => {
+  const { rows } = await pool.query("SELECT key, value FROM config");
   const cfg = {};
   rows.forEach(r => { try { cfg[r.key] = JSON.parse(r.value); } catch { cfg[r.key] = r.value; } });
   res.json(cfg);
 });
 
-app.post("/api/config", (req, res) => {
-  const upsert = db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)");
-  const insertMany = db.transaction((entries) => {
-    for (const [k, v] of entries) upsert.run(k, JSON.stringify(v));
-  });
-  insertMany(Object.entries(req.body));
+app.post("/api/config", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const [k, v] of Object.entries(req.body)) {
+      await client.query(
+        "INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+        [k, JSON.stringify(v)]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
   res.json({ ok: true });
 });
 
 // ─── Business (spreadsheet) endpoints ─────────────────────────────
-app.get("/api/businesses", (req, res) => {
+app.get("/api/businesses", async (req, res) => {
   const { search, website_status, pipeline_status, city, page, pageSize } = req.query;
   let where = "WHERE 1=1";
   const params = [];
-  if (search) { where += " AND (name LIKE ? OR category LIKE ? OR phone LIKE ? OR address LIKE ?)"; const s = `%${search}%`; params.push(s, s, s, s); }
-  if (website_status) { where += " AND website_status = ?"; params.push(website_status); }
-  if (pipeline_status) { where += " AND pipeline_status = ?"; params.push(pipeline_status); }
-  if (city) { where += " AND city = ?"; params.push(city); }
-  const total = db.prepare(`SELECT COUNT(*) as n FROM businesses ${where}`).get(...params).n;
+  let idx = 1;
+  if (search) { where += ` AND (name LIKE $${idx} OR category LIKE $${idx+1} OR phone LIKE $${idx+2} OR address LIKE $${idx+3})`; const s = `%${search}%`; params.push(s, s, s, s); idx += 4; }
+  if (website_status) { where += ` AND website_status = $${idx}`; params.push(website_status); idx++; }
+  if (pipeline_status) { where += ` AND pipeline_status = $${idx}`; params.push(pipeline_status); idx++; }
+  if (city) { where += ` AND city = $${idx}`; params.push(city); idx++; }
+  const { rows: countRows } = await pool.query(`SELECT COUNT(*)::int as n FROM businesses ${where}`, params);
+  const total = countRows[0].n;
   let query = `SELECT * FROM businesses ${where} ORDER BY created_at DESC`;
   if (page && pageSize) {
     const p = parseInt(page, 10) || 1;
     const ps = parseInt(pageSize, 10) || 100;
     query += ` LIMIT ${ps} OFFSET ${(p - 1) * ps}`;
   }
-  const rows = db.prepare(query).all(...params);
+  const { rows } = await pool.query(query, params);
   res.json({ data: rows, total });
 });
 
-app.post("/api/businesses", (req, res) => {
+app.post("/api/businesses", async (req, res) => {
   const biz = req.body;
   const items = Array.isArray(biz) ? biz : [biz];
   let inserted = 0;
   let updated = 0;
   for (const b of items) {
-    const saved = upsertBusiness(b, b.city || "");
+    const saved = await upsertBusiness(b, b.city || "");
     if (saved.inserted) inserted++; else updated++;
   }
   res.json({ ok: true, count: inserted + updated, inserted, updated });
 });
 
-app.patch("/api/businesses/:id", (req, res) => {
+app.patch("/api/businesses/:id", async (req, res) => {
   const { id } = req.params;
   const updates = req.body;
   const allowed = ["name","category","address","city","phone","rating","reviews","website_url","website_status","pipeline_status","notes","message_sent","message_sent_at"];
@@ -268,66 +324,74 @@ app.patch("/api/businesses/:id", (req, res) => {
   if (keys.includes("pipeline_status") && !VALID_PIPELINE_STATUSES.includes(updates.pipeline_status)) {
     return res.status(400).json({ error: `Invalid pipeline_status. Must be one of: ${VALID_PIPELINE_STATUSES.join(", ")}` });
   }
-  const fields = keys.map(k => `${k} = @${k}`).join(", ");
-  const payload = { id };
-  keys.forEach(k => payload[k] = updates[k]);
+  const setClauses = keys.map((k, i) => `${k} = $${i + 1}`);
+  const vals = keys.map(k => updates[k]);
   if (keys.includes("pipeline_status")) {
-    const current = db.prepare("SELECT name, pipeline_status FROM businesses WHERE id = ?").get(id);
-    payload.pipeline_updated_at = new Date().toISOString();
-    db.prepare(`UPDATE businesses SET ${fields}, pipeline_updated_at = @pipeline_updated_at WHERE id = @id`).run(payload);
+    const { rows } = await pool.query("SELECT name, pipeline_status FROM businesses WHERE id = $1", [id]);
+    const current = rows[0];
+    const now = new Date().toISOString();
+    vals.push(now, id);
+    await pool.query(
+      `UPDATE businesses SET ${setClauses.join(", ")}, pipeline_updated_at = $${vals.length - 1} WHERE id = $${vals.length}`,
+      vals
+    );
     if (current && current.pipeline_status !== updates.pipeline_status) {
-      db.prepare("INSERT INTO pipeline_history (business_id, business_name, old_status, new_status) VALUES (?, ?, ?, ?)")
-        .run(id, current.name, current.pipeline_status, updates.pipeline_status);
+      await pool.query(
+        "INSERT INTO pipeline_history (business_id, business_name, old_status, new_status) VALUES ($1, $2, $3, $4)",
+        [id, current.name, current.pipeline_status, updates.pipeline_status]
+      );
     }
   } else {
-    db.prepare(`UPDATE businesses SET ${fields} WHERE id = @id`).run(payload);
+    vals.push(id);
+    await pool.query(
+      `UPDATE businesses SET ${setClauses.join(", ")} WHERE id = $${vals.length}`,
+      vals
+    );
   }
   res.json({ ok: true });
 });
 
-app.delete("/api/businesses", (req, res) => {
+app.delete("/api/businesses", async (req, res) => {
   const { ids } = req.body;
   if (Array.isArray(ids)) {
     if (ids.length === 0) return res.json({ ok: true });
-    const placeholders = ids.map(() => "?").join(",");
-    db.prepare(`DELETE FROM businesses WHERE id IN (${placeholders})`).run(...ids);
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(",");
+    await pool.query(`DELETE FROM businesses WHERE id IN (${placeholders})`, ids);
   } else {
-    db.prepare("DELETE FROM businesses").run();
+    await pool.query("DELETE FROM businesses");
   }
   res.json({ ok: true });
 });
 
-
 // ─── Local competitor website examples ───────────────────────────
-// For pitching no-website/broken-site leads: show similar businesses in the
-// same city/category that already have working websites.
-app.get("/api/businesses/:id/competitor-examples", (req, res) => {
+app.get("/api/businesses/:id/competitor-examples", async (req, res) => {
   const { id } = req.params;
-  const target = db.prepare("SELECT * FROM businesses WHERE id = ?").get(id);
+  const { rows: targetRows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [id]);
+  const target = targetRows[0];
   if (!target) return res.status(404).json({ error: "Business not found" });
 
   const category = (target.category || "").trim();
   const city = (target.city || "").trim();
   const params = [id];
+  let paramIdx = 2;
   let query = `
     SELECT id, name, category, address, city, phone, rating, reviews, website_url, website_status
     FROM businesses
-    WHERE id != ?
+    WHERE id != $1
       AND website_url != ''
       AND website_status = 'working'
   `;
 
-  // Prefer same city/locality. If city is missing, fall back to category only.
   if (city) {
-    query += " AND city = ?";
+    query += ` AND city = $${paramIdx}`;
     params.push(city);
+    paramIdx++;
   }
 
-  // Similar category match. LIKE is intentional because Google categories can vary
-  // slightly: e.g. "Dental clinic" vs "Dentist".
   if (category) {
-    query += " AND (LOWER(category) LIKE LOWER(?) OR LOWER(?) LIKE '%' || LOWER(category) || '%')";
+    query += ` AND (LOWER(category) LIKE LOWER($${paramIdx}) OR LOWER($${paramIdx + 1}) LIKE '%' || LOWER(category) || '%')`;
     params.push(`%${category}%`, category);
+    paramIdx += 2;
   }
 
   query += `
@@ -338,16 +402,14 @@ app.get("/api/businesses/:id/competitor-examples", (req, res) => {
     LIMIT 8
   `;
 
-  let examples = db.prepare(query).all(...params);
+  let { rows: examples } = await pool.query(query, params);
 
-  // Fallback: if exact city+category is too strict, show same city businesses with
-  // working sites so the user still has local proof examples.
   if (examples.length === 0 && city) {
-    examples = db.prepare(`
+    const { rows: fallback } = await pool.query(`
       SELECT id, name, category, address, city, phone, rating, reviews, website_url, website_status
       FROM businesses
-      WHERE id != ?
-        AND city = ?
+      WHERE id != $1
+        AND city = $2
         AND website_url != ''
         AND website_status = 'working'
       ORDER BY
@@ -355,20 +417,21 @@ app.get("/api/businesses/:id/competitor-examples", (req, res) => {
         CASE WHEN reviews != '' THEN CAST(REPLACE(REPLACE(reviews, ',', ''), '.', '') AS INTEGER) ELSE 0 END DESC,
         name ASC
       LIMIT 8
-    `).all(id, city);
+    `, [id, city]);
+    examples = fallback;
   }
 
   res.json({ target, examples });
 });
 
 // ─── Stats endpoint ───────────────────────────────────────────────
-app.get("/api/stats", (req, res) => {
-  const total = db.prepare("SELECT COUNT(*) as n FROM businesses").get().n;
-  const noWebsite = db.prepare("SELECT COUNT(*) as n FROM businesses WHERE website_status = 'no_website'").get().n;
-  const broken = db.prepare("SELECT COUNT(*) as n FROM businesses WHERE website_status IN ('broken', 'blocked')").get().n;
-  const byPipeline = db.prepare("SELECT pipeline_status, COUNT(*) as n FROM businesses GROUP BY pipeline_status").all();
-  const byCity = db.prepare("SELECT city, COUNT(*) as n FROM businesses WHERE city != '' GROUP BY city ORDER BY n DESC LIMIT 15").all();
-  res.json({ total, noWebsite, broken, byPipeline, byCity });
+app.get("/api/stats", async (req, res) => {
+  const { rows: [tot] } = await pool.query("SELECT COUNT(*)::int as n FROM businesses");
+  const { rows: [now] } = await pool.query("SELECT COUNT(*)::int as n FROM businesses WHERE website_status = 'no_website'");
+  const { rows: [brk] } = await pool.query("SELECT COUNT(*)::int as n FROM businesses WHERE website_status IN ('broken', 'blocked')");
+  const { rows: byPipeline } = await pool.query("SELECT pipeline_status, COUNT(*)::int as n FROM businesses GROUP BY pipeline_status");
+  const { rows: byCity } = await pool.query("SELECT city, COUNT(*)::int as n FROM businesses WHERE city != '' GROUP BY city ORDER BY n DESC LIMIT 15");
+  res.json({ total: tot.n, noWebsite: now.n, broken: brk.n, byPipeline, byCity });
 });
 
 // ─── Website reachability checker ─────────────────────────────────
@@ -463,39 +526,40 @@ function cleanPhone(raw) {
   return null;
 }
 
-const insertBusinessStmt = db.prepare(`
+// ─── Business upsert helpers ────────────────────────────────────────
+const INSERT_BUSINESS_SQL = `
   INSERT INTO businesses
     (id, name, category, address, city, phone, rating, reviews, website_url, website_status, location_query, source, scraped_on)
   VALUES
-    (@id, @name, @category, @address, @city, @phone, @rating, @reviews, @website_url, @website_status, @location_query, @source, @scraped_on)
-`);
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+`;
 
-const updateExistingBusinessStmt = db.prepare(`
+const UPDATE_BUSINESS_SQL = `
   UPDATE businesses SET
-    category = COALESCE(NULLIF(@category, ''), category),
-    address = COALESCE(NULLIF(@address, ''), address),
-    city = COALESCE(NULLIF(@city, ''), city),
-    rating = COALESCE(NULLIF(@rating, ''), rating),
-    reviews = COALESCE(NULLIF(@reviews, ''), reviews),
-    website_url = COALESCE(NULLIF(@website_url, ''), website_url),
-    website_status = CASE WHEN @website_status != '' THEN @website_status ELSE website_status END,
-    location_query = COALESCE(NULLIF(@location_query, ''), location_query),
-    scraped_on = @scraped_on
-  WHERE id = @existing_id
-`);
+    category = COALESCE(NULLIF($2, ''), category),
+    address = COALESCE(NULLIF($3, ''), address),
+    city = COALESCE(NULLIF($4, ''), city),
+    rating = COALESCE(NULLIF($5, ''), rating),
+    reviews = COALESCE(NULLIF($6, ''), reviews),
+    website_url = COALESCE(NULLIF($7, ''), website_url),
+    website_status = CASE WHEN $8 != '' THEN $8 ELSE website_status END,
+    location_query = COALESCE(NULLIF($9, ''), location_query),
+    scraped_on = $10
+  WHERE id = $1
+`;
 
-function findExistingBusiness(b) {
+async function findExistingBusiness(b) {
   const phone = cleanPhone(b.phone || "") || "";
   if (phone) {
-    const byPhone = db.prepare("SELECT id FROM businesses WHERE phone = ? LIMIT 1").get(phone);
-    if (byPhone) return byPhone.id;
-    const byNamePhone = db.prepare("SELECT id FROM businesses WHERE LOWER(name) = LOWER(?) AND phone = ? LIMIT 1").get(b.name || "", phone);
-    if (byNamePhone) return byNamePhone.id;
+    const { rows } = await pool.query("SELECT id FROM businesses WHERE phone = $1 LIMIT 1", [phone]);
+    if (rows.length > 0) return rows[0].id;
+    const { rows: rows2 } = await pool.query("SELECT id FROM businesses WHERE LOWER(name) = LOWER($1) AND phone = $2 LIMIT 1", [b.name || "", phone]);
+    if (rows2.length > 0) return rows2[0].id;
   }
   return null;
 }
 
-function upsertBusiness(b, location) {
+async function upsertBusiness(b, location) {
   const scraped_on = new Date().toISOString().slice(0, 10);
   const row = {
     id: b.id || `scraped-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -505,33 +569,39 @@ function upsertBusiness(b, location) {
     website_url: b.website_url || "", website_status: b.website_status || (b.website_url ? "unchecked" : "no_website"),
     location_query: b.query || b.location_query || "", source: b.source || "Google Maps", scraped_on,
   };
-  const existing_id = findExistingBusiness(row);
+  const existing_id = await findExistingBusiness(row);
   if (existing_id) {
-    updateExistingBusinessStmt.run({ ...row, existing_id });
+    await pool.query(UPDATE_BUSINESS_SQL, [
+      existing_id, row.category, row.address, row.city, row.rating, row.reviews,
+      row.website_url, row.website_status, row.location_query, row.scraped_on,
+    ]);
     return { ...row, id: existing_id, inserted: false };
   }
-  insertBusinessStmt.run(row);
+  await pool.query(INSERT_BUSINESS_SQL, [
+    row.id, row.name, row.category, row.address, row.city, row.phone,
+    row.rating, row.reviews, row.website_url, row.website_status,
+    row.location_query, row.source, row.scraped_on,
+  ]);
   return { ...row, inserted: true };
 }
 
 // Re-check (or first-check) websites for a given set of business ids.
-// Runs sequentially with a small stagger to avoid hammering many hosts at once.
 app.post("/api/check-websites", async (req, res) => {
   const { ids } = req.body;
   const rows = ids && ids.length
-    ? db.prepare(`SELECT id, website_url FROM businesses WHERE id IN (${ids.map(() => "?").join(",")})`).all(...ids)
-    : db.prepare("SELECT id, website_url FROM businesses WHERE website_status = 'unchecked'").all();
+    ? (await pool.query(`SELECT id, website_url FROM businesses WHERE id IN (${ids.map((_, i) => `$${i + 1}`).join(",")})`, ids)).rows
+    : (await pool.query("SELECT id, website_url FROM businesses WHERE website_status = 'unchecked'")).rows;
 
   const results = await runWithConcurrency(rows, 6, async (row) => {
     const status = await checkWebsite(row.website_url);
     const checkedAt = new Date().toISOString();
-    db.prepare("UPDATE businesses SET website_status = ?, website_checked_at = ? WHERE id = ?").run(status, checkedAt, row.id);
+    await pool.query("UPDATE businesses SET website_status = $1, website_checked_at = $2 WHERE id = $3", [status, checkedAt, row.id]);
     return { id: row.id, website_status: status, website_checked_at: checkedAt };
   });
   res.json({ ok: true, checked: results.length, results });
 });
 
-// ─── Google Maps Scraper (captures ALL businesses — with or without a site) ──
+// ─── Google Maps Scraper ──
 let activeScrapeJob = null;
 
 app.post("/api/scrape/cancel", (req, res) => {
@@ -693,7 +763,7 @@ app.post("/api/scrape", async (req, res) => {
             }, name, query);
 
             if (data) {
-              const saved = upsertBusiness(data, location);
+              const saved = await upsertBusiness(data, location);
               if (saved.inserted) inserted++; else updated++;
               if (saved.website_url) toCheckById.set(saved.id, { id: saved.id, website_url: saved.website_url });
               logger.info({ name, phone: data.phone || "MISSING", site: data.website_url || "none", action: saved.inserted ? "inserted" : "updated" }, "business scraped");
@@ -719,7 +789,7 @@ app.post("/api/scrape", async (req, res) => {
         await runWithConcurrency(toCheck, 6, async (b) => {
           const status = await checkWebsite(b.website_url);
           const checkedAt = new Date().toISOString();
-          db.prepare("UPDATE businesses SET website_status = ?, website_checked_at = ? WHERE id = ?").run(status, checkedAt, b.id);
+          await pool.query("UPDATE businesses SET website_status = $1, website_checked_at = $2 WHERE id = $3", [status, checkedAt, b.id]);
         });
         logger.info({ count: toCheck.length }, "website checks complete");
       })();
@@ -739,7 +809,7 @@ app.post("/api/scrape", async (req, res) => {
 // ─── WhatsApp Session State ───────────────────────────────────────
 let waBrowser = null;
 let waPage = null;
-let waStatus = "disconnected"; // disconnected | connecting | qr_ready | connected
+let waStatus = "disconnected";
 let sendQueue = [];
 let sendState = { running: false, paused: false, index: 0, sentCount: 0, failCount: 0, total: 0 };
 
@@ -753,7 +823,7 @@ app.post("/api/wa/connect", async (req, res) => {
     if (!fs.existsSync(WA_SESSION_DIR)) fs.mkdirSync(WA_SESSION_DIR, { recursive: true });
 
     waBrowser = await puppeteer.launch({
-      headless: false, // must be visible so the user can scan the QR
+      headless: false,
       userDataDir: WA_SESSION_DIR,
       args: ["--no-sandbox", "--disable-setuid-sandbox", "--start-maximized"],
       defaultViewport: null,
@@ -895,8 +965,8 @@ app.post("/api/wa/send", async (req, res) => {
       continue;
     }
     if (seenPhones.has(phone)) {
-      db.prepare("INSERT INTO send_log (business_id, business_name, phone, status, reason) VALUES (?, ?, ?, ?, ?)")
-        .run(biz.id, biz.name, biz.phone || "", "skipped", "Duplicate phone in this send queue");
+      await pool.query("INSERT INTO send_log (business_id, business_name, phone, status, reason) VALUES ($1, $2, $3, $4, $5)",
+        [biz.id, biz.name, biz.phone || "", "skipped", "Duplicate phone in this send queue"]);
       continue;
     }
     seenPhones.add(phone);
@@ -915,8 +985,8 @@ app.post("/api/wa/send", async (req, res) => {
       sendState.index = i + 1;
 
       if (!biz.phone) {
-        db.prepare("INSERT INTO send_log (business_id, business_name, phone, status, reason) VALUES (?, ?, ?, ?, ?)")
-          .run(biz.id, biz.name, biz.phone || "", "skipped", "No phone number");
+        await pool.query("INSERT INTO send_log (business_id, business_name, phone, status, reason) VALUES ($1, $2, $3, $4, $5)",
+          [biz.id, biz.name, biz.phone || "", "skipped", "No phone number"]);
         continue;
       }
 
@@ -925,19 +995,20 @@ app.post("/api/wa/send", async (req, res) => {
         await sendWhatsAppMessage(biz.phone, msg);
         sendState.sentCount++;
         const now = new Date().toISOString();
-        const current = db.prepare("SELECT name, pipeline_status FROM businesses WHERE id = ?").get(biz.id);
-        db.prepare("UPDATE businesses SET pipeline_status = 'contacted', pipeline_updated_at = ?, message_sent = ?, message_sent_at = ? WHERE id = ?")
-          .run(now, msg, now, biz.id);
+        const { rows } = await pool.query("SELECT name, pipeline_status FROM businesses WHERE id = $1", [biz.id]);
+        const current = rows[0];
+        await pool.query("UPDATE businesses SET pipeline_status = 'contacted', pipeline_updated_at = $1, message_sent = $2, message_sent_at = $3 WHERE id = $4",
+          [now, msg, now, biz.id]);
         if (current && current.pipeline_status !== "contacted") {
-          db.prepare("INSERT INTO pipeline_history (business_id, business_name, old_status, new_status) VALUES (?, ?, ?, ?)")
-            .run(biz.id, current.name, current.pipeline_status, "contacted");
+          await pool.query("INSERT INTO pipeline_history (business_id, business_name, old_status, new_status) VALUES ($1, $2, $3, $4)",
+            [biz.id, current.name, current.pipeline_status, "contacted"]);
         }
-        db.prepare("INSERT INTO send_log (business_id, business_name, phone, status) VALUES (?, ?, ?, ?)")
-          .run(biz.id, biz.name, biz.phone, "sent");
+        await pool.query("INSERT INTO send_log (business_id, business_name, phone, status) VALUES ($1, $2, $3, $4)",
+          [biz.id, biz.name, biz.phone, "sent"]);
       } catch (err) {
         sendState.failCount++;
-        db.prepare("INSERT INTO send_log (business_id, business_name, phone, status, reason) VALUES (?, ?, ?, ?, ?)")
-          .run(biz.id, biz.name, biz.phone, "failed", err.message);
+        await pool.query("INSERT INTO send_log (business_id, business_name, phone, status, reason) VALUES ($1, $2, $3, $4, $5)",
+          [biz.id, biz.name, biz.phone, "failed", err.message]);
       }
 
       if (i < sendQueue.length - 1 && sendState.running && !sendState.paused) {
@@ -952,12 +1023,14 @@ app.post("/api/wa/send", async (req, res) => {
 app.post("/api/wa/pause", (req, res) => { sendState.paused = !sendState.paused; res.json({ ok: true, paused: sendState.paused }); });
 app.post("/api/wa/stop", (req, res) => { sendState.running = false; sendState.paused = false; res.json({ ok: true }); });
 
-app.get("/api/send-log", (req, res) => {
-  res.json(db.prepare("SELECT * FROM send_log ORDER BY sent_at DESC LIMIT 200").all());
+app.get("/api/send-log", async (req, res) => {
+  const { rows } = await pool.query("SELECT * FROM send_log ORDER BY sent_at DESC LIMIT 200");
+  res.json(rows);
 });
 
-app.get("/api/pipeline-history", (req, res) => {
-  res.json(db.prepare("SELECT * FROM pipeline_history ORDER BY changed_at DESC LIMIT 300").all());
+app.get("/api/pipeline-history", async (req, res) => {
+  const { rows } = await pool.query("SELECT * FROM pipeline_history ORDER BY changed_at DESC LIMIT 300");
+  res.json(rows);
 });
 
 // ─── Centralized error handler ────────────────────────────────────
@@ -976,9 +1049,18 @@ if (fs.existsSync(distPath)) {
 const PORT = process.env.PORT || 5000;
 let server;
 if (process.env.NODE_ENV !== "test") {
-  server = app.listen(PORT, () => {
-    logger.info({ port: PORT, db: path.join(DATA_DIR, "pipeline.db") }, "server started");
-  });
+  const start = async () => {
+    try {
+      await initDb();
+      server = app.listen(PORT, () => {
+        logger.info({ port: PORT, database: DATABASE_URL }, "server started");
+      });
+    } catch (err) {
+      logger.error({ error: err.message }, "failed to start server");
+      process.exit(1);
+    }
+  };
+  start();
 }
 
-export { app, server, db, normalizeUrl, looksLikeBotChallenge, cleanPhone, findExistingBusiness, upsertBusiness, checkWebsite, checkWebsiteOnce, runWithConcurrency, sendWhatsAppMessage, requireAuth, JWT_SECRET, DATA_DIR };
+export { app, server, pool, normalizeUrl, looksLikeBotChallenge, cleanPhone, findExistingBusiness, upsertBusiness, checkWebsite, checkWebsiteOnce, runWithConcurrency, sendWhatsAppMessage, requireAuth, JWT_SECRET, DATA_DIR, initDb };
