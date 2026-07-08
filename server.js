@@ -11,6 +11,8 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
+import swaggerUi from "swagger-ui-express";
+import swaggerSpec from "./swagger.js";
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -256,6 +258,11 @@ app.post("/api/auth/change-password", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Password change failed" });
   }
 });
+
+// ─── Swagger / OpenAPI docs ──────────────────────────────────────────
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  swaggerOptions: { persistAuthorization: true },
+}));
 
 // Protect all /api/* routes after this point
 app.use("/api", requireAuth);
