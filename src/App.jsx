@@ -173,8 +173,17 @@ function ScrapeTab({ onDone }) {
   const [maxPerQuery, setMaxPerQuery] = useState(20);
   const [headless, setHeadless] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [polling, setPolling] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const jobIdRef = useRef(null);
+  const pollRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   function addCategory() {
     const c = categoryInput.trim();
@@ -183,6 +192,11 @@ function ScrapeTab({ onDone }) {
   }
 
   async function cancelScrape() {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = null;
+    setPolling(false);
+    setLoading(false);
+    setError("Scrape cancelled.");
     await api("/scrape/cancel", { method: "POST" }).catch(() => {});
   }
 
@@ -192,6 +206,7 @@ function ScrapeTab({ onDone }) {
       return;
     }
     setLoading(true);
+    setPolling(false);
     setError(null);
     setResult(null);
     try {
@@ -199,10 +214,35 @@ function ScrapeTab({ onDone }) {
         method: "POST",
         body: JSON.stringify({ location: location.trim(), categories, maxPerQuery: Number(maxPerQuery), headless }),
       });
-      setResult(res);
+      const jobId = res.jobId;
+      jobIdRef.current = jobId;
+      setPolling(true);
+      pollRef.current = setInterval(async () => {
+        try {
+          const status = await api(`/scrape/status/${jobId}`);
+          if (status.state === "completed") {
+            setResult(status.result);
+            setPolling(false);
+            setLoading(false);
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+          } else if (status.state === "failed") {
+            setError(status.error || "Scrape failed");
+            setPolling(false);
+            setLoading(false);
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        } catch (e) {
+          setError(e.message);
+          setPolling(false);
+          setLoading(false);
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      }, 2000);
     } catch (e) {
       setError(e.message);
-    } finally {
       setLoading(false);
     }
   }
@@ -260,15 +300,15 @@ function ScrapeTab({ onDone }) {
             <input type="checkbox" checked={headless} onChange={e => setHeadless(e.target.checked)} />
             Run browser in background (headless)
           </label>
-          <button className="btn" onClick={runScrape} disabled={loading}>
-            {loading ? <span className="spinner" /> : null} {loading ? "Scraping…" : "Scrape Google Maps"}
+          <button className="btn" onClick={runScrape} disabled={loading || polling}>
+            {loading || polling ? <span className="spinner" /> : null} {loading || polling ? (polling ? "Running…" : "Scraping…") : "Scrape Google Maps"}
           </button>
-          {loading && <button className="btn danger" onClick={cancelScrape} type="button">Cancel scrape</button>}
+          {(loading || polling) && <button className="btn danger" onClick={cancelScrape} type="button">Cancel scrape</button>}
         </div>
 
         {error && <p className="helper-text" style={{ color: "var(--web-no_website)" }}>{error}</p>}
 
-        {loading && (
+        {(loading || polling) && (
           <p className="helper-text">
             This opens a real browser and visits each listing individually to pull phone numbers reliably —
             budget roughly 15–25 seconds per business. Feel free to switch to the Ledger tab; results land in
@@ -336,6 +376,7 @@ function LeadsTab({ selectedIds, setSelectedIds }) {
       ]);
       setRows(result.data || result);
       setTotalRows(result.total ?? (result.data ? 0 : result.length));
+      if (result.totalPages) setPage(result.page);
       setStats(statData);
     } finally {
       setLoading(false);
@@ -411,6 +452,7 @@ function LeadsTab({ selectedIds, setSelectedIds }) {
     if (search) params.set("search", search);
     if (websiteFilter) params.set("website_status", websiteFilter);
     if (pipelineFilter) params.set("pipeline_status", pipelineFilter);
+    params.set("page", 1); params.set("pageSize", 100000);
     const result = await api(`/businesses?${params.toString()}`);
     const allRows = result.data || result;
     const data = allRows.map(r => ({

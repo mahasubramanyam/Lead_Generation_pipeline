@@ -9,6 +9,8 @@ import path from "path";
 import fs from "fs";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import { Queue, Worker } from "bullmq";
+import Redis from "ioredis";
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -130,6 +132,12 @@ async function initDb() {
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || "lp-secret-change-in-production";
+
+// ─── Redis / BullMQ ──────────────────────────────────────────────────
+const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+const redisConnection = new Redis(REDIS_URL, { maxRetriesPerRequest: null, enableReadyCheck: false });
+const scrapeQueue = new Queue("scrape", { connection: redisConnection });
+const cancelledJobs = new Map();
 
 app.use(cors());
 app.use(express.json());
@@ -292,14 +300,15 @@ app.get("/api/businesses", async (req, res) => {
   if (city) { where += ` AND city = $${idx}`; params.push(city); idx++; }
   const { rows: countRows } = await pool.query(`SELECT COUNT(*)::int as n FROM businesses ${where}`, params);
   const total = countRows[0].n;
-  let query = `SELECT * FROM businesses ${where} ORDER BY created_at DESC`;
-  if (page && pageSize) {
-    const p = parseInt(page, 10) || 1;
-    const ps = parseInt(pageSize, 10) || 100;
-    query += ` LIMIT ${ps} OFFSET ${(p - 1) * ps}`;
-  }
-  const { rows } = await pool.query(query, params);
-  res.json({ data: rows, total });
+  const p = Math.max(1, parseInt(page, 10) || 1);
+  const ps = Math.min(500, Math.max(1, parseInt(pageSize, 10) || 100));
+  const totalPages = Math.max(1, Math.ceil(total / ps));
+  params.push(ps, (p - 1) * ps);
+  const { rows } = await pool.query(
+    `SELECT * FROM businesses ${where} ORDER BY created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`,
+    params
+  );
+  res.json({ data: rows, total, totalPages, page: p, pageSize: ps });
 });
 
 app.post("/api/businesses", async (req, res) => {
@@ -601,28 +610,10 @@ app.post("/api/check-websites", async (req, res) => {
   res.json({ ok: true, checked: results.length, results });
 });
 
-// ─── Google Maps Scraper ──
-let activeScrapeJob = null;
+// ─── Google Maps Scraper (BullMQ background job) ─────────────────────
 
-app.post("/api/scrape/cancel", (req, res) => {
-  if (activeScrapeJob) {
-    activeScrapeJob.cancelled = true;
-    return res.json({ ok: true, cancelled: true });
-  }
-  res.json({ ok: true, cancelled: false });
-});
-
-app.post("/api/scrape", async (req, res) => {
-  const { location, categories, maxPerQuery = 20, headless = true } = req.body;
-  if (!location || !categories || !categories.length) {
-    return res.status(400).json({ error: "location and at least one category are required" });
-  }
-  if (activeScrapeJob && !activeScrapeJob.done) {
-    return res.status(409).json({ error: "A scrape is already running. Cancel it or wait for it to finish." });
-  }
-
-  const job = { cancelled: false, done: false };
-  activeScrapeJob = job;
+async function runScrapeJob(params) {
+  const { location, categories, maxPerQuery = 20, headless = true, jobId } = params;
   const queries = categories.map(c => `${c} in ${location}`);
   let browser;
   let inserted = 0;
@@ -642,7 +633,7 @@ app.post("/api/scrape", async (req, res) => {
     await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
     for (const query of queries) {
-      if (job.cancelled) break;
+      if (cancelledJobs.has(jobId)) break;
       logger.info({ query }, "scraping query");
       try {
         await page.goto(`https://www.google.com/maps/search/${encodeURIComponent(query)}`, { waitUntil: "domcontentloaded", timeout: 45000 });
@@ -669,7 +660,7 @@ app.post("/api/scrape", async (req, res) => {
         try { await page.waitForSelector('a[href*="/place/"]', { timeout: 15000 }); }
         catch { continue; }
 
-        for (let i = 0; i < 8 && !job.cancelled; i++) {
+        for (let i = 0; i < 8 && !cancelledJobs.has(jobId); i++) {
           await page.mouse.wheel({ deltaY: 2500 });
           await new Promise(r => setTimeout(r, 1800));
         }
@@ -691,7 +682,7 @@ app.post("/api/scrape", async (req, res) => {
         logger.info({ count: hrefs.length, query }, "listings found");
 
         for (const { name, href } of hrefs.slice(0, maxPerQuery)) {
-          if (job.cancelled) break;
+          if (cancelledJobs.has(jobId)) break;
           const runKey = `${name.toLowerCase().trim()}|${query.toLowerCase().trim()}`;
           if (seenThisRun.has(runKey)) { skippedInRun++; continue; }
           seenThisRun.add(runKey);
@@ -785,25 +776,81 @@ app.post("/api/scrape", async (req, res) => {
 
     const toCheck = [...toCheckById.values()];
     if (toCheck.length) {
-      (async () => {
-        await runWithConcurrency(toCheck, 6, async (b) => {
-          const status = await checkWebsite(b.website_url);
-          const checkedAt = new Date().toISOString();
-          await pool.query("UPDATE businesses SET website_status = $1, website_checked_at = $2 WHERE id = $3", [status, checkedAt, b.id]);
-        });
-        logger.info({ count: toCheck.length }, "website checks complete");
-      })();
+      await runWithConcurrency(toCheck, 6, async (b) => {
+        const status = await checkWebsite(b.website_url);
+        const checkedAt = new Date().toISOString();
+        await pool.query("UPDATE businesses SET website_status = $1, website_checked_at = $2 WHERE id = $3", [status, checkedAt, b.id]);
+      });
+      logger.info({ count: toCheck.length }, "website checks complete");
     }
 
-    res.json({ ok: true, count: inserted + updated, inserted, updated, skippedInRun, cancelled: job.cancelled, pendingWebsiteChecks: toCheck.length });
+    const wasCancelled = cancelledJobs.has(jobId);
+    cancelledJobs.delete(jobId);
+    return { ok: true, count: inserted + updated, inserted, updated, skippedInRun, cancelled: wasCancelled, pendingWebsiteChecks: toCheck.length };
   } catch (err) {
     if (browser) await browser.close().catch(() => {});
+    cancelledJobs.delete(jobId);
     logger.error({ error: err.message }, "scrape fatal error");
-    res.status(500).json({ error: err.message });
-  } finally {
-    job.done = true;
-    if (activeScrapeJob === job) activeScrapeJob = null;
+    throw err;
   }
+}
+
+const scrapeWorker = new Worker("scrape", async (job) => {
+  const { location, categories } = job.data;
+  if (!location || !categories || !categories.length) {
+    throw new Error("location and at least one category are required");
+  }
+  return await runScrapeJob({ ...job.data, jobId: job.id });
+}, { connection: redisConnection, concurrency: 1 });
+
+scrapeWorker.on("failed", (job, err) => {
+  logger.error({ error: err.message, jobId: job?.id }, "scrape job failed");
+});
+
+scrapeWorker.on("completed", (job) => {
+  logger.info({ jobId: job.id, result: job.returnvalue }, "scrape job completed");
+});
+
+app.post("/api/scrape", async (req, res) => {
+  const { location, categories, maxPerQuery = 20, headless = true } = req.body;
+  if (!location || !categories || !categories.length) {
+    return res.status(400).json({ error: "location and at least one category are required" });
+  }
+
+  // Check for active jobs in the queue
+  const activeJobs = await scrapeQueue.getActive();
+  const waitingJobs = await scrapeQueue.getWaiting();
+  if (activeJobs.length > 0 || waitingJobs.length > 0) {
+    return res.status(409).json({ error: "A scrape is already running. Cancel it or wait for it to finish." });
+  }
+
+  const job = await scrapeQueue.add("scrape", { location, categories, maxPerQuery, headless }, {
+    removeOnComplete: { age: 3600 },
+    removeOnFail: { age: 3600 },
+  });
+  res.json({ ok: true, jobId: job.id });
+});
+
+app.post("/api/scrape/cancel", async (req, res) => {
+  const activeJobs = await scrapeQueue.getActive();
+  const waitingJobs = await scrapeQueue.getWaiting();
+  const jobs = [...activeJobs, ...waitingJobs];
+  if (jobs.length === 0) return res.json({ ok: true, cancelled: false });
+
+  for (const job of jobs) {
+    cancelledJobs.set(job.id, true);
+  }
+  res.json({ ok: true, cancelled: true });
+});
+
+app.get("/api/scrape/status/:jobId", async (req, res) => {
+  const { jobId } = req.params;
+  const job = await scrapeQueue.getJob(jobId);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+  const state = await job.getState();
+  const result = state === "completed" ? job.returnvalue : null;
+  const failedReason = state === "failed" ? job.failedReason : null;
+  res.json({ jobId, state, result, error: failedReason });
 });
 
 // ─── WhatsApp Session State ───────────────────────────────────────
