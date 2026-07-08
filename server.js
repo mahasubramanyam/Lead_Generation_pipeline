@@ -838,6 +838,12 @@ app.get("/api/pipeline-history", (req, res) => {
   res.json(db.prepare("SELECT * FROM pipeline_history ORDER BY changed_at DESC LIMIT 300").all());
 });
 
+// ─── Centralized error handler ────────────────────────────────────
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(err.status || 500).json({ error: err.message || "Internal server error" });
+});
+
 // ─── Serve frontend (production build) ───────────────────────────
 const distPath = path.join(__dirname, "dist");
 if (fs.existsSync(distPath)) {
@@ -846,7 +852,12 @@ if (fs.existsSync(distPath)) {
 }
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`\n✅ Lead Pipeline Server running on http://localhost:${PORT}`);
-  console.log(`   Database: ${path.join(DATA_DIR, "pipeline.db")}\n`);
-});
+let server;
+if (process.env.NODE_ENV !== "test") {
+  server = app.listen(PORT, () => {
+    console.log(`\n✅ Lead Pipeline Server running on http://localhost:${PORT}`);
+    console.log(`   Database: ${path.join(DATA_DIR, "pipeline.db")}\n`);
+  });
+}
+
+export { app, server, db, normalizeUrl, looksLikeBotChallenge, cleanPhone, findExistingBusiness, upsertBusiness, checkWebsite, checkWebsiteOnce, runWithConcurrency, sendWhatsAppMessage, DATA_DIR };

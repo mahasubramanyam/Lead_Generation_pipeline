@@ -8,7 +8,10 @@
     "build": "vite build",
     "server": "node server.js",
     "start": "concurrently \"node server.js\" \"vite\"",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test tests/helpers.test.js",
+    "test:api": "node --test tests/api.test.js",
+    "test:all": "node --test tests/helpers.test.js tests/api.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.0.0",
