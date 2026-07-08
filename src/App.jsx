@@ -23,11 +23,15 @@ function statusMeta(key) {
   return PIPELINE_STATUSES.find(s => s.key === key) || PIPELINE_STATUSES[0];
 }
 
-async function api(path, opts) {
-  const res = await fetch(`/api${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...opts,
-  });
+async function api(path, opts = {}) {
+  const token = localStorage.getItem("token");
+  const headers = { "Content-Type": "application/json", ...opts.headers };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`/api${path}`, { ...opts, headers });
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    window.location.reload();
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || `Request failed: ${res.status}`);
@@ -35,7 +39,100 @@ async function api(path, opts) {
   return res.json();
 }
 
+function AuthPage() {
+  const [mode, setMode] = useState("login");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/auth/${mode}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      localStorage.setItem("token", data.token);
+      window.location.reload();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <div className="auth-logo">LP</div>
+          <h1>Lead Pipeline</h1>
+          <p className="auth-desc">no-website &amp; broken-site business finder — India</p>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="auth-field">
+            <label htmlFor="auth-username">Username</label>
+            <input id="auth-username" type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="Your username" autoFocus autoComplete="username" />
+          </div>
+          <div className="auth-field">
+            <label htmlFor="auth-password">Password</label>
+            <input id="auth-password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Your password" autoComplete={mode === "login" ? "current-password" : "new-password"} />
+          </div>
+          {error && <p className="auth-error">{error}</p>}
+          <button className="btn auth-submit" type="submit" disabled={loading}>
+            {loading ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
+          </button>
+        </form>
+        <div className="auth-switch">
+          {mode === "login" ? (
+            <span>Don&apos;t have an account? <button type="button" className="link-btn" onClick={() => { setMode("register"); setError(null); }}>Create one</button></span>
+          ) : (
+            <span>Already have an account? <button type="button" className="link-btn" onClick={() => { setMode("login"); setError(null); }}>Sign in</button></span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setAuthChecked(true);
+      setAuthenticated(false);
+      return;
+    }
+    fetch("/api/auth/check", {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(res => {
+      if (!res.ok) { localStorage.removeItem("token"); setAuthenticated(false); return; }
+      return res.json();
+    }).then(data => {
+      if (data?.valid) { setUser(data.user); setAuthenticated(true); }
+    }).catch(() => {
+      localStorage.removeItem("token");
+      setAuthenticated(false);
+    }).finally(() => setAuthChecked(true));
+  }, []);
+
+  if (!authChecked) return <div className="loading-page"><div className="spinner" /></div>;
+  if (!authenticated) return <AuthPage />;
+
+  return <AuthenticatedApp user={user} />;
+}
+
+function AuthenticatedApp({ user }) {
   const [tab, setTab] = useState("scrape");
   const [selectedIds, setSelectedIds] = useState(new Set());
 
@@ -52,6 +149,10 @@ export default function App() {
           <button className={`tab-btn ${tab === "leads" ? "active" : ""}`} onClick={() => setTab("leads")}>Ledger</button>
           <button className={`tab-btn ${tab === "whatsapp" ? "active" : ""}`} onClick={() => setTab("whatsapp")}>WhatsApp</button>
         </nav>
+        <div className="user-info">
+          <span className="user-badge">{user?.username}</span>
+          <button className="btn logout-btn" onClick={() => { localStorage.removeItem("token"); window.location.reload(); }}>Logout</button>
+        </div>
       </header>
       <main className="app-body">
         {tab === "scrape" && <ScrapeTab onDone={() => setTab("leads")} />}

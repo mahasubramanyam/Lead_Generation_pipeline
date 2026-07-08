@@ -7,6 +7,8 @@ import Database from "better-sqlite3";
 import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -65,7 +67,16 @@ db.exec(`
     new_status TEXT,
     changed_at TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
 `);
+
+const JWT_SECRET = process.env.JWT_SECRET || "lp-secret-change-in-production";
 
 for (const [column, definition] of [
   ["website_checked_at", "TEXT DEFAULT ''"],
@@ -118,6 +129,85 @@ app.post("/api/scrape", scrapeLimiter);
 app.post("/api/wa/send", strictLimiter);
 app.post("/api/wa/connect", strictLimiter);
 app.use("/api/", generalLimiter);
+
+// ─── JWT auth middleware ───────────────────────────────────────────
+function requireAuth(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  try {
+    req.user = jwt.verify(header.slice(7), JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+}
+
+// ─── Auth routes (no auth required) ────────────────────────────────
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: "Username and password are required" });
+    if (typeof username !== "string" || typeof password !== "string") return res.status(400).json({ error: "Username and password must be strings" });
+    if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+    const normalized = username.toLowerCase().trim();
+    const existing = db.prepare("SELECT id FROM users WHERE username = ?").get(normalized);
+    if (existing) return res.status(409).json({ error: "Username already taken" });
+    const password_hash = await bcrypt.hash(password, 10);
+    db.prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)").run(normalized, password_hash);
+    const token = jwt.sign({ username: normalized }, JWT_SECRET, { expiresIn: "7d" });
+    logger.info({ username: normalized }, "user registered");
+    res.json({ token, user: { username: normalized } });
+  } catch (err) {
+    logger.error({ error: err.message }, "register error");
+    res.status(500).json({ error: "Registration failed" });
+  }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: "Username and password are required" });
+    if (typeof username !== "string" || typeof password !== "string") return res.status(400).json({ error: "Username and password must be strings" });
+    const normalized = username.toLowerCase().trim();
+    const user = db.prepare("SELECT * FROM users WHERE username = ?").get(normalized);
+    if (!user) return res.status(401).json({ error: "Invalid username or password" });
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) return res.status(401).json({ error: "Invalid username or password" });
+    const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: "7d" });
+    logger.info({ username: user.username }, "user logged in");
+    res.json({ token, user: { username: user.username } });
+  } catch (err) {
+    logger.error({ error: err.message }, "login error");
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+app.get("/api/auth/check", requireAuth, (req, res) => {
+  res.json({ valid: true, user: { username: req.user.username } });
+});
+
+app.post("/api/auth/change-password", requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: "Current password and new password are required" });
+    if (newPassword.length < 6) return res.status(400).json({ error: "New password must be at least 6 characters" });
+    const user = db.prepare("SELECT * FROM users WHERE username = ?").get(req.user.username);
+    const valid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!valid) return res.status(401).json({ error: "Current password is incorrect" });
+    const password_hash = await bcrypt.hash(newPassword, 10);
+    db.prepare("UPDATE users SET password_hash = ? WHERE username = ?").run(password_hash, req.user.username);
+    logger.info({ username: user.username }, "password changed");
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ error: err.message }, "change-password error");
+    res.status(500).json({ error: "Password change failed" });
+  }
+});
+
+// Protect all /api/* routes after this point
+app.use("/api", requireAuth);
 
 // ─── Config endpoints ────────────────────────────────────────────
 app.get("/api/config", (req, res) => {
@@ -891,4 +981,4 @@ if (process.env.NODE_ENV !== "test") {
   });
 }
 
-export { app, server, db, normalizeUrl, looksLikeBotChallenge, cleanPhone, findExistingBusiness, upsertBusiness, checkWebsite, checkWebsiteOnce, runWithConcurrency, sendWhatsAppMessage, DATA_DIR };
+export { app, server, db, normalizeUrl, looksLikeBotChallenge, cleanPhone, findExistingBusiness, upsertBusiness, checkWebsite, checkWebsiteOnce, runWithConcurrency, sendWhatsAppMessage, requireAuth, JWT_SECRET, DATA_DIR };

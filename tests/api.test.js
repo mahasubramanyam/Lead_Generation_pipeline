@@ -5,13 +5,62 @@ import { randomUUID } from "node:crypto";
 const BASE = "http://localhost:5000";
 const API = (path) => `${BASE}/api${path}`;
 
+let TOKEN = "";
+const TEST_USER = `test-${Date.now()}`;
+const TEST_PASS = "testpass123";
+
 function json(method, path, body) {
+  const headers = { "Content-Type": "application/json" };
+  if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
   return fetch(API(path), {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }));
 }
+
+before(async () => {
+  const r = await json("POST", "/auth/register", { username: TEST_USER, password: TEST_PASS });
+  if (r.status === 200) {
+    TOKEN = r.body.token;
+  } else {
+    // May already exist from a previous run; try logging in
+    const l = await json("POST", "/auth/login", { username: TEST_USER, password: TEST_PASS });
+    TOKEN = l.body.token;
+  }
+  assert.ok(TOKEN, "should have a token after register/login");
+});
+
+describe("Auth endpoints", () => {
+  it("rejects register with missing fields", async () => {
+    const { status } = await json("POST", "/auth/register", { username: "x" });
+    assert.equal(status, 400);
+  });
+  it("rejects login with wrong password", async () => {
+    const { status, body } = await json("POST", "/auth/login", { username: TEST_USER, password: "wrongpass" });
+    assert.equal(status, 401);
+    assert.ok(body.error.includes("Invalid username or password"));
+  });
+  it("rejects login for nonexistent user", async () => {
+    const { status, body } = await json("POST", "/auth/login", { username: "no-such-user-99999", password: "x" });
+    assert.equal(status, 401);
+    assert.ok(body.error.includes("Invalid username or password"));
+  });
+  it("returns valid token on check", async () => {
+    const { status, body } = await json("GET", "/auth/check");
+    assert.equal(status, 200);
+    assert.equal(body.valid, true);
+    assert.equal(body.user.username, TEST_USER);
+  });
+  it("rejects request without token", async () => {
+    const res = await fetch(API("/stats"));
+    assert.equal(res.status, 401);
+  });
+  it("rejects request with bad token", async () => {
+    const res = await fetch(API("/stats"), { headers: { Authorization: "Bearer badtoken" } });
+    assert.equal(res.status, 401);
+  });
+});
 
 describe("Scraper API safeguards", () => {
   it("rejects scrape without location", async () => {
