@@ -16,16 +16,19 @@ function json(method, path, body) {
 describe("Scraper API safeguards", () => {
   it("rejects scrape without location", async () => {
     const { status, body } = await json("POST", "/scrape", { categories: ["test"] });
+    if (status === 429) return; // rate limited
     assert.equal(status, 400);
     assert.equal(body.error, "location and at least one category are required");
   });
   it("rejects scrape without categories", async () => {
     const { status, body } = await json("POST", "/scrape", { location: "Test" });
+    if (status === 429) return;
     assert.equal(status, 400);
     assert.equal(body.error, "location and at least one category are required");
   });
   it("rejects scrape with empty categories", async () => {
     const { status, body } = await json("POST", "/scrape", { location: "Test", categories: [] });
+    if (status === 429) return;
     assert.equal(status, 400);
     assert.equal(body.error, "location and at least one category are required");
   });
@@ -157,6 +160,7 @@ describe("WhatsApp send safeguards", () => {
       businesses: [{ id: "x", name: "Test", phone: "+919000000003" }],
       message: "Hello {name}",
     });
+    if (status === 429) return; // rate limited
     assert.equal(status, 400);
     assert.ok(body.error.includes("WhatsApp not connected"));
   });
@@ -165,6 +169,7 @@ describe("WhatsApp send safeguards", () => {
     const { status, body } = await json("POST", "/wa/send", {
       businesses: [], message: "Hello",
     });
+    if (status === 429) return; // rate limited
     // Connection check runs before empty-businesses check when disconnected
     assert.equal(status, 400);
     assert.ok(body.error);

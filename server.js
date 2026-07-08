@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
+import pino from "pino";
 import puppeteer from "puppeteer";
 import Database from "better-sqlite3";
 import { fileURLToPath } from "url";
@@ -10,6 +12,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const DATA_DIR = path.join(__dirname, "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+
+const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 
 // ─── SQLite Database ────────────────────────────────────────────
 const db = new Database(path.join(DATA_DIR, "pipeline.db"));
@@ -86,6 +90,34 @@ app.use((req, res, next) => {
   if (localIps.has(ip) || ip === "") return next();
   return res.status(403).json({ error: "Blocked non-local request. Run behind authentication before exposing this app on a network." });
 });
+
+// Request logging
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    logger.info({ method: req.method, path: req.path, status: res.statusCode, duration: Date.now() - start }, "request");
+  });
+  next();
+});
+
+// ─── Rate limiting ────────────────────────────────────────────────
+const strictLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false,
+  message: { error: "Too many requests. Slow down." },
+});
+const scrapeLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 3, standardHeaders: true, legacyHeaders: false,
+  message: { error: "Too many scrape requests. Wait before starting another scrape." },
+});
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false,
+  message: { error: "Too many requests. Slow down." },
+});
+
+app.post("/api/scrape", scrapeLimiter);
+app.post("/api/wa/send", strictLimiter);
+app.post("/api/wa/connect", strictLimiter);
+app.use("/api/", generalLimiter);
 
 // ─── Config endpoints ────────────────────────────────────────────
 app.get("/api/config", (req, res) => {
@@ -451,7 +483,7 @@ app.post("/api/scrape", async (req, res) => {
 
     for (const query of queries) {
       if (job.cancelled) break;
-      console.log(`Scraping: ${query}`);
+      logger.info({ query }, "scraping query");
       try {
         await page.goto(`https://www.google.com/maps/search/${encodeURIComponent(query)}`, { waitUntil: "domcontentloaded", timeout: 45000 });
         await new Promise(r => setTimeout(r, 4000));
@@ -496,7 +528,7 @@ app.post("/api/scrape", async (req, res) => {
           return results;
         });
 
-        console.log(`Found ${hrefs.length} listings for "${query}"`);
+        logger.info({ count: hrefs.length, query }, "listings found");
 
         for (const { name, href } of hrefs.slice(0, maxPerQuery)) {
           if (job.cancelled) break;
@@ -574,17 +606,17 @@ app.post("/api/scrape", async (req, res) => {
               const saved = upsertBusiness(data, location);
               if (saved.inserted) inserted++; else updated++;
               if (saved.website_url) toCheckById.set(saved.id, { id: saved.id, website_url: saved.website_url });
-              console.log(`  ✓ ${name} | phone: ${data.phone || "MISSING"} | site: ${data.website_url || "none"} | ${saved.inserted ? "inserted" : "updated"}`);
+              logger.info({ name, phone: data.phone || "MISSING", site: data.website_url || "none", action: saved.inserted ? "inserted" : "updated" }, "business scraped");
             }
 
             await page.goBack({ waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => {});
             await new Promise(r => setTimeout(r, 1500));
           } catch (err) {
-            console.log(`  ⚠ Error on ${name}: ${err.message}`);
+            logger.warn({ name, error: err.message }, "scrape listing error");
           }
         }
       } catch (err) {
-        console.error(`Error scraping "${query}":`, err.message);
+        logger.error({ query, error: err.message }, "scrape query error");
       }
       await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000));
     }
@@ -599,14 +631,14 @@ app.post("/api/scrape", async (req, res) => {
           const checkedAt = new Date().toISOString();
           db.prepare("UPDATE businesses SET website_status = ?, website_checked_at = ? WHERE id = ?").run(status, checkedAt, b.id);
         });
-        console.log(`✅ Website checks complete for ${toCheck.length} businesses`);
+        logger.info({ count: toCheck.length }, "website checks complete");
       })();
     }
 
     res.json({ ok: true, count: inserted + updated, inserted, updated, skippedInRun, cancelled: job.cancelled, pendingWebsiteChecks: toCheck.length });
   } catch (err) {
     if (browser) await browser.close().catch(() => {});
-    console.error("Scrape error:", err);
+    logger.error({ error: err.message }, "scrape fatal error");
     res.status(500).json({ error: err.message });
   } finally {
     job.done = true;
@@ -651,21 +683,21 @@ app.post("/api/wa/connect", async (req, res) => {
 
     if (result === "ready") {
       waStatus = "connected";
-      console.log("✅ WhatsApp already connected via saved session");
+      logger.info("whatsapp already connected via saved session");
       return res.json({ ok: true, status: "connected" });
     }
 
     waStatus = "qr_ready";
-    console.log("📱 QR code ready — scan it in the opened browser window");
+    logger.info("whatsapp qr code ready");
     res.json({ ok: true, status: "qr_ready" });
 
     waPage.waitForSelector('[data-testid="chat-list"]', { timeout: 120000 })
-      .then(() => { waStatus = "connected"; console.log("✅ WhatsApp connected after QR scan"); })
-      .catch((e) => { waStatus = "disconnected"; console.error("❌ WA connect timeout:", e.message); });
+      .then(() => { waStatus = "connected"; logger.info("whatsapp connected after qr scan"); })
+      .catch((e) => { waStatus = "disconnected"; logger.error({ error: e.message }, "whatsapp connect timeout"); });
 
   } catch (err) {
     waStatus = "disconnected";
-    console.error("WA connect error:", err);
+    logger.error({ error: err.message }, "whatsapp connect error");
     res.status(500).json({ error: err.message });
   }
 });
@@ -840,7 +872,7 @@ app.get("/api/pipeline-history", (req, res) => {
 
 // ─── Centralized error handler ────────────────────────────────────
 app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
+  logger.error({ error: err.message, stack: err.stack }, "unhandled error");
   res.status(err.status || 500).json({ error: err.message || "Internal server error" });
 });
 
@@ -855,8 +887,7 @@ const PORT = process.env.PORT || 5000;
 let server;
 if (process.env.NODE_ENV !== "test") {
   server = app.listen(PORT, () => {
-    console.log(`\n✅ Lead Pipeline Server running on http://localhost:${PORT}`);
-    console.log(`   Database: ${path.join(DATA_DIR, "pipeline.db")}\n`);
+    logger.info({ port: PORT, db: path.join(DATA_DIR, "pipeline.db") }, "server started");
   });
 }
 
