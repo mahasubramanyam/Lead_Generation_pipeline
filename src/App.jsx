@@ -354,50 +354,72 @@ function LeadsTab({ selectedIds, setSelectedIds }) {
   const [websiteFilter, setWebsiteFilter] = useState("");
   const [pipelineFilter, setPipelineFilter] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [checking, setChecking] = useState(false);
   const [examplePanel, setExamplePanel] = useState(null);
   const [exampleLoading, setExampleLoading] = useState(false);
-  const [page, setPage] = useState(1);
+  const pageRef = useRef(1);
+  const loadingMoreRef = useRef(false);
   const pageSize = 100;
   const debounceRef = useRef(null);
+  const sentinelRef = useRef(null);
+  const hasMore = rows.length < totalRows;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (search) params.set("search", search);
-      if (websiteFilter) params.set("website_status", websiteFilter);
-      if (pipelineFilter) params.set("pipeline_status", pipelineFilter);
-      params.set("page", page);
-      params.set("pageSize", pageSize);
-      const [result, statData] = await Promise.all([
-        api(`/businesses?${params.toString()}`),
-        api("/stats"),
-      ]);
-      setRows(result.data || result);
-      setTotalRows(result.total ?? (result.data ? 0 : result.length));
-      if (result.totalPages) setPage(result.page);
-      setStats(statData);
-    } finally {
-      setLoading(false);
-    }
-  }, [search, websiteFilter, pipelineFilter, page]);
+  const loadPage = useCallback(async (pageNum, append) => {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (websiteFilter) params.set("website_status", websiteFilter);
+    if (pipelineFilter) params.set("pipeline_status", pipelineFilter);
+    params.set("page", pageNum);
+    params.set("pageSize", pageSize);
+    const [result, statData] = await Promise.all([
+      api(`/businesses?${params.toString()}`),
+      append ? Promise.resolve(null) : api("/stats"),
+    ]);
+    const newRows = result.data || result;
+    setRows(prev => append ? [...prev, ...newRows] : newRows);
+    setTotalRows(result.total ?? 0);
+    if (statData) setStats(statData);
+  }, [search, websiteFilter, pipelineFilter]);
 
+  // Reset + load on filter change
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(load, 300);
+    setLoading(true);
+    pageRef.current = 1;
+    debounceRef.current = setTimeout(async () => {
+      await loadPage(1, false);
+      setLoading(false);
+    }, 300);
     return () => clearTimeout(debounceRef.current);
-  }, [load]);
+  }, [loadPage]);
+
+  // Infinite scroll — load next page when sentinel enters viewport
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore && !loadingMoreRef.current && !loading) {
+        loadingMoreRef.current = true;
+        setLoadingMore(true);
+        pageRef.current += 1;
+        loadPage(pageRef.current, true).finally(() => {
+          loadingMoreRef.current = false;
+          setLoadingMore(false);
+        });
+      }
+    }, { rootMargin: "400px" });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadPage]);
 
   function handleSearchChange(v) {
-    setPage(1);
     setSearch(v);
   }
 
   async function updateField(id, field, value) {
     setRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
     await api(`/businesses/${id}`, { method: "PATCH", body: JSON.stringify({ [field]: value }) });
-    load();
   }
 
   function toggleSelect(id) {
@@ -415,7 +437,10 @@ function LeadsTab({ selectedIds, setSelectedIds }) {
     setChecking(true);
     try {
       await api("/check-websites", { method: "POST", body: JSON.stringify({ ids }) });
-      await load();
+      pageRef.current = 1;
+      setLoading(true);
+      await loadPage(1, false);
+      setLoading(false);
     } finally {
       setChecking(false);
     }
@@ -426,7 +451,10 @@ function LeadsTab({ selectedIds, setSelectedIds }) {
     if (!confirm(`Delete ${selectedIds.size} selected business(es)? This can't be undone.`)) return;
     await api("/businesses", { method: "DELETE", body: JSON.stringify({ ids: [...selectedIds] }) });
     setSelectedIds(new Set());
-    load();
+    pageRef.current = 1;
+    setLoading(true);
+    await loadPage(1, false);
+    setLoading(false);
   }
 
 
@@ -442,10 +470,6 @@ function LeadsTab({ selectedIds, setSelectedIds }) {
       setExampleLoading(false);
     }
   }
-
-  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const pagedRows = rows;
 
   async function exportData(format) {
     const params = new URLSearchParams();
@@ -536,11 +560,11 @@ function LeadsTab({ selectedIds, setSelectedIds }) {
               className="search-box" type="text" placeholder="Search name, phone, category, address…"
               value={search} onChange={e => handleSearchChange(e.target.value)}
             />
-            <select value={websiteFilter} onChange={e => { setPage(1); setWebsiteFilter(e.target.value); }}>
+            <select value={websiteFilter} onChange={e => setWebsiteFilter(e.target.value)}>
               <option value="">All website statuses</option>
               {Object.entries(WEBSITE_STATUSES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
-            <select value={pipelineFilter} onChange={e => { setPage(1); setPipelineFilter(e.target.value); }}>
+            <select value={pipelineFilter} onChange={e => setPipelineFilter(e.target.value)}>
               <option value="">All pipeline statuses</option>
               {PIPELINE_STATUSES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
@@ -588,13 +612,13 @@ function LeadsTab({ selectedIds, setSelectedIds }) {
                 </tr>
               </thead>
               <tbody>
-                {pagedRows.map((r, i) => {
+                {rows.map((r, i) => {
                   const ws = WEBSITE_STATUSES[r.website_status] || WEBSITE_STATUSES.unchecked;
                   const ps = statusMeta(r.pipeline_status);
                   return (
                     <tr key={r.id}>
                       <td><input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelect(r.id)} /></td>
-                      <td className="idx-cell">{(currentPage - 1) * pageSize + i + 1}</td>
+                      <td className="idx-cell">{i + 1}</td>
                       <td style={{ fontWeight: 600 }}>{r.name}</td>
                       <td>{r.category}</td>
                       <td className="mono" style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }} title={r.address}>{r.address}</td>
@@ -638,16 +662,17 @@ function LeadsTab({ selectedIds, setSelectedIds }) {
             </table>
           )}
         </div>
-        {totalRows > pageSize && (
-          <div className="row" style={{ justifyContent: "space-between", marginTop: 12 }}>
-            <span className="helper-text">Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalRows)} of {totalRows}</span>
-            <div className="row" style={{ marginBottom: 0 }}>
-              <button className="btn secondary sm" disabled={currentPage === 1} onClick={() => setPage(p => Math.max(1, p - 1))}>Previous</button>
-              <span className="helper-text">Page {currentPage} / {totalPages}</span>
-              <button className="btn secondary sm" disabled={currentPage === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>Next</button>
+          <div ref={sentinelRef} style={{ height: 1 }} />
+          {loadingMore && (
+            <div className="row" style={{ justifyContent: "center", marginTop: 12 }}>
+              <span className="helper-text"><span className="spinner" /> Loading more…</span>
             </div>
-          </div>
-        )}
+          )}
+          {!hasMore && rows.length > 0 && (
+            <p className="helper-text" style={{ textAlign: "center", marginTop: 12 }}>
+              Showing all {totalRows} result{totalRows === 1 ? "" : "s"}.
+            </p>
+          )}
       </div>
     </div>
   );
