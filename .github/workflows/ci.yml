@@ -47,6 +47,12 @@ jobs:
           node-version: 20
           cache: npm
 
+      - uses: actions/cache@v4
+        id: puppeteer-cache
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - run: npm ci
 
       - run: npm run lint
