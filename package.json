@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test": "node --test tests/helpers.test.js",
     "test:api": "node --test tests/api.test.js",
-    "test:all": "node --test tests/helpers.test.js tests/api.test.js"
+    "test:all": "node --test tests/helpers.test.js tests/api.test.js",
+    "lint": "node --check server.js swagger.js vite.config.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
