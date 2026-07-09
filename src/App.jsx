@@ -23,11 +23,13 @@ function statusMeta(key) {
   return PIPELINE_STATUSES.find(s => s.key === key) || PIPELINE_STATUSES[0];
 }
 
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
 async function api(path, opts = {}) {
   const token = localStorage.getItem("token");
   const headers = { "Content-Type": "application/json", ...opts.headers };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`/api${path}`, { ...opts, headers });
+  const res = await fetch(`${API_BASE}/api${path}`, { ...opts, headers });
   if (res.status === 401) {
     localStorage.removeItem("token");
     window.location.reload();
@@ -105,6 +107,7 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
+  const [demoMode, setDemoMode] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -113,13 +116,13 @@ export default function App() {
       setAuthenticated(false);
       return;
     }
-    fetch("/api/auth/check", {
+    fetch(`${API_BASE}/api/auth/check`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(res => {
       if (!res.ok) { localStorage.removeItem("token"); setAuthenticated(false); return; }
       return res.json();
     }).then(data => {
-      if (data?.valid) { setUser(data.user); setAuthenticated(true); }
+      if (data?.valid) { setUser(data.user); setAuthenticated(true); setDemoMode(data.demoMode || false); }
     }).catch(() => {
       localStorage.removeItem("token");
       setAuthenticated(false);
@@ -129,15 +132,16 @@ export default function App() {
   if (!authChecked) return <div className="loading-page"><div className="spinner" /></div>;
   if (!authenticated) return <AuthPage />;
 
-  return <AuthenticatedApp user={user} />;
+  return <AuthenticatedApp user={user} demoMode={demoMode} />;
 }
 
-function AuthenticatedApp({ user }) {
+function AuthenticatedApp({ user, demoMode }) {
   const [tab, setTab] = useState("scrape");
   const [selectedIds, setSelectedIds] = useState(new Set());
 
   return (
     <div className="app-shell">
+      {demoMode && <div className="demo-banner">Demo Mode &mdash; Live scraping and WhatsApp are disabled.</div>}
       <header className="app-header">
         <div className="app-title">
           <span className="mark">LP</span>
@@ -155,7 +159,7 @@ function AuthenticatedApp({ user }) {
         </div>
       </header>
       <main className="app-body">
-        {tab === "scrape" && <ScrapeTab onDone={() => setTab("leads")} />}
+        {tab === "scrape" && <ScrapeTab demoMode={demoMode} onDone={() => setTab("leads")} />}
         {tab === "leads" && <LeadsTab selectedIds={selectedIds} setSelectedIds={setSelectedIds} />}
         {tab === "whatsapp" && <WhatsAppTab selectedIds={selectedIds} setSelectedIds={setSelectedIds} />}
       </main>
@@ -166,8 +170,8 @@ function AuthenticatedApp({ user }) {
 /* ══════════════════════════════════════════════════════════════
    FIND LEADS — scrape Google Maps for a location + categories
    ══════════════════════════════════════════════════════════════ */
-function ScrapeTab({ onDone }) {
-  const [location, setLocation] = useState("");
+function ScrapeTab({ onDone, demoMode }) {
+  const [location, setLocation] = useState(demoMode ? "Bangalore" : "");
   const [categoryInput, setCategoryInput] = useState("");
   const [categories, setCategories] = useState([]);
   const [maxPerQuery, setMaxPerQuery] = useState(20);
@@ -252,9 +256,9 @@ function ScrapeTab({ onDone }) {
       <div className="panel">
         <h2>Find businesses in any Indian location</h2>
         <p className="desc">
-          Pulls real listings from Google Maps for the location and categories you give it —
+          P{demoMode ? "rovides sample " : "ulls real listings from Google Maps for the location and categories you give it — "}
           name, category, address, phone, rating, and whether they have a website at all.
-          Nothing here is generated; every row is a live scrape result.
+          {demoMode ? "  Data shown is for demo purposes." : "  Nothing here is generated; every row is a live scrape result."}
         </p>
 
         <div className="row">
@@ -301,7 +305,7 @@ function ScrapeTab({ onDone }) {
             Run browser in background (headless)
           </label>
           <button className="btn" onClick={runScrape} disabled={loading || polling}>
-            {loading || polling ? <span className="spinner" /> : null} {loading || polling ? (polling ? "Running…" : "Scraping…") : "Scrape Google Maps"}
+            {loading || polling ? <span className="spinner" /> : null} {loading || polling ? (polling ? "Running…" : "Scraping…") : (demoMode ? "Generate sample businesses" : "Scrape Google Maps")}
           </button>
           {(loading || polling) && <button className="btn danger" onClick={cancelScrape} type="button">Cancel scrape</button>}
         </div>
@@ -310,9 +314,9 @@ function ScrapeTab({ onDone }) {
 
         {(loading || polling) && (
           <p className="helper-text">
-            This opens a real browser and visits each listing individually to pull phone numbers reliably —
-            budget roughly 15–25 seconds per business. Feel free to switch to the Ledger tab; results land in
-            the database as they're found.
+            {demoMode
+              ? "Generating sample businesses for the requested location and categories. Feel free to switch to the Ledger tab."
+              : "This opens a real browser and visits each listing individually to pull phone numbers reliably — budget roughly 15–25 seconds per business. Feel free to switch to the Ledger tab; results land in the database as they're found."}
           </p>
         )}
 

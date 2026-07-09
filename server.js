@@ -20,6 +20,8 @@ const app = express();
 const DATA_DIR = path.join(__dirname, "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
+const DEMO_MODE = process.env.DEMO_MODE === "true";
+
 const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 
 const DATABASE_URL = process.env.DATABASE_URL || "postgresql://user:pass@localhost:5432/lead_pipeline";
@@ -137,9 +139,14 @@ const JWT_SECRET = process.env.JWT_SECRET || "lp-secret-change-in-production";
 
 // ─── Redis / BullMQ ──────────────────────────────────────────────────
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
-const redisConnection = new Redis(REDIS_URL, { maxRetriesPerRequest: null, enableReadyCheck: false });
-const scrapeQueue = new Queue("scrape", { connection: redisConnection });
+let redisConnection = null;
+let scrapeQueue = null;
 const cancelledJobs = new Map();
+
+if (!DEMO_MODE) {
+  redisConnection = new Redis(REDIS_URL, { maxRetriesPerRequest: null, enableReadyCheck: false });
+  scrapeQueue = new Queue("scrape", { connection: redisConnection });
+}
 
 app.use(cors());
 app.use(express.json());
@@ -237,7 +244,7 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 app.get("/api/auth/check", requireAuth, (req, res) => {
-  res.json({ valid: true, user: { username: req.user.username } });
+  res.json({ valid: true, user: { username: req.user.username }, demoMode: DEMO_MODE });
 });
 
 app.post("/api/auth/change-password", requireAuth, async (req, res) => {
@@ -621,6 +628,20 @@ async function upsertBusiness(b, location) {
 // Re-check (or first-check) websites for a given set of business ids.
 app.post("/api/check-websites", async (req, res) => {
   const { ids } = req.body;
+  if (DEMO_MODE) {
+    const statuses = ["working", "broken", "blocked"];
+    const rowsToCheck = ids && ids.length
+      ? (await pool.query(`SELECT id FROM businesses WHERE id IN (${ids.map((_, i) => `$${i + 1}`).join(",")})`, ids)).rows
+      : (await pool.query("SELECT id FROM businesses WHERE website_status = 'unchecked'")).rows;
+    const results = [];
+    for (const row of rowsToCheck) {
+      const status = statuses[Math.floor(Math.random() * statuses.length)];
+      const checkedAt = new Date().toISOString();
+      await pool.query("UPDATE businesses SET website_status = $1, website_checked_at = $2 WHERE id = $3", [status, checkedAt, row.id]);
+      results.push({ id: row.id, website_status: status, website_checked_at: checkedAt });
+    }
+    return res.json({ ok: true, checked: results.length, results, demoMode: true });
+  }
   const rows = ids && ids.length
     ? (await pool.query(`SELECT id, website_url FROM businesses WHERE id IN (${ids.map((_, i) => `$${i + 1}`).join(",")})`, ids)).rows
     : (await pool.query("SELECT id, website_url FROM businesses WHERE website_status = 'unchecked'")).rows;
@@ -819,26 +840,64 @@ async function runScrapeJob(params) {
   }
 }
 
-const scrapeWorker = new Worker("scrape", async (job) => {
-  const { location, categories } = job.data;
-  if (!location || !categories || !categories.length) {
-    throw new Error("location and at least one category are required");
-  }
-  return await runScrapeJob({ ...job.data, jobId: job.id });
-}, { connection: redisConnection, concurrency: 1 });
+if (!DEMO_MODE) {
+  const scrapeWorker = new Worker("scrape", async (job) => {
+    const { location, categories } = job.data;
+    if (!location || !categories || !categories.length) {
+      throw new Error("location and at least one category are required");
+    }
+    return await runScrapeJob({ ...job.data, jobId: job.id });
+  }, { connection: redisConnection, concurrency: 1 });
 
-scrapeWorker.on("failed", (job, err) => {
-  logger.error({ error: err.message, jobId: job?.id }, "scrape job failed");
-});
+  scrapeWorker.on("failed", (job, err) => {
+    logger.error({ error: err.message, jobId: job?.id }, "scrape job failed");
+  });
 
-scrapeWorker.on("completed", (job) => {
-  logger.info({ jobId: job.id, result: job.returnvalue }, "scrape job completed");
-});
+  scrapeWorker.on("completed", (job) => {
+    logger.info({ jobId: job.id, result: job.returnvalue }, "scrape job completed");
+  });
+}
 
 app.post("/api/scrape", async (req, res) => {
   const { location, categories, maxPerQuery = 20, headless = true } = req.body;
   if (!location || !categories || !categories.length) {
     return res.status(400).json({ error: "location and at least one category are required" });
+  }
+
+  if (DEMO_MODE) {
+    // Demo mode: generate and insert mock businesses for the requested location/categories
+    let inserted = 0;
+    let updated = 0;
+    for (const cat of categories) {
+      const count = Math.min(maxPerQuery, 50);
+      for (let i = 0; i < count; i++) {
+        const bizId = `demo-scrape-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        try {
+          await pool.query(
+            `INSERT INTO businesses (id, name, category, address, city, phone, rating, reviews, website_url, website_status, website_checked_at, location_query, source, scraped_on, pipeline_status, pipeline_updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+            [
+              bizId, `${cat} Demo ${i + 1}`, cat,
+              `${Math.floor(Math.random() * 999) + 1}, Demo Street`, location,
+              `+9199${String(Math.floor(Math.random() * 100000000)).padStart(8, "0")}`,
+              (3 + Math.random() * 2).toFixed(1), String(Math.floor(Math.random() * 300)),
+              Math.random() < 0.4 ? `https://demo-${cat.toLowerCase().replace(/ /g, "")}.example.com` : "",
+              ["no_website", "broken", "blocked", "working"][Math.floor(Math.random() * 4)],
+              new Date().toISOString(), `${cat} in ${location}`, "Google Maps",
+              new Date().toISOString().slice(0, 10), "not_contacted", "",
+            ]
+          );
+          inserted++;
+        } catch (err) {
+          if (err.code === "23505") { updated++; continue; }
+          throw err;
+        }
+      }
+    }
+    return res.json({
+      ok: true, jobId: "demo-" + Date.now(),
+      count: inserted + updated, inserted, updated, demoMode: true,
+    });
   }
 
   // Check for active jobs in the queue
@@ -856,6 +915,7 @@ app.post("/api/scrape", async (req, res) => {
 });
 
 app.post("/api/scrape/cancel", async (req, res) => {
+  if (DEMO_MODE) return res.json({ ok: true, cancelled: false });
   const activeJobs = await scrapeQueue.getActive();
   const waitingJobs = await scrapeQueue.getWaiting();
   const jobs = [...activeJobs, ...waitingJobs];
@@ -868,6 +928,7 @@ app.post("/api/scrape/cancel", async (req, res) => {
 });
 
 app.get("/api/scrape/status/:jobId", async (req, res) => {
+  if (DEMO_MODE) return res.json({ jobId: req.params.jobId, state: "completed", result: { count: 0, inserted: 0, updated: 0 }, error: null });
   const { jobId } = req.params;
   const job = await scrapeQueue.getJob(jobId);
   if (!job) return res.status(404).json({ error: "Job not found" });
@@ -885,6 +946,7 @@ let sendQueue = [];
 let sendState = { running: false, paused: false, index: 0, sentCount: 0, failCount: 0, total: 0 };
 
 app.post("/api/wa/connect", async (req, res) => {
+  if (DEMO_MODE) return res.json({ ok: true, status: "connected", demoMode: true });
   if (waStatus === "connected") return res.json({ ok: true, status: "connected" });
 
   try {
@@ -934,6 +996,7 @@ app.post("/api/wa/connect", async (req, res) => {
 });
 
 app.get("/api/wa/status", async (req, res) => {
+  if (DEMO_MODE) return res.json({ status: "connected", sendState: { running: false, paused: false, index: 0, sentCount: 0, failCount: 0, total: 0 } });
   if (waStatus === "connected" && waPage) {
     try {
       const stillConnected = await waPage.evaluate(() => {
@@ -948,6 +1011,7 @@ app.get("/api/wa/status", async (req, res) => {
 });
 
 app.post("/api/wa/disconnect", async (req, res) => {
+  if (DEMO_MODE) return res.json({ ok: true });
   sendState.running = false;
   if (waBrowser) { await waBrowser.close().catch(() => {}); }
   waBrowser = null; waPage = null; waStatus = "disconnected";
@@ -1021,6 +1085,19 @@ async function sendWhatsAppMessage(phone, message) {
 }
 
 app.post("/api/wa/send", async (req, res) => {
+  if (DEMO_MODE) {
+    const { businesses: bizList, message } = req.body;
+    if (!bizList || !bizList.length) return res.status(400).json({ error: "No businesses provided" });
+    for (const biz of bizList) {
+      const now = new Date().toISOString();
+      const msg = (message || "").replace(/\{name\}/g, biz.name).replace(/\{category\}/g, biz.category || "");
+      await pool.query("UPDATE businesses SET pipeline_status = 'contacted', pipeline_updated_at = $1, message_sent = $2, message_sent_at = $3 WHERE id = $4",
+        [now, msg, now, biz.id]);
+      await pool.query("INSERT INTO send_log (business_id, business_name, phone, status) VALUES ($1,$2,$3,$4)",
+        [biz.id, biz.name, biz.phone || "", "sent"]);
+    }
+    return res.json({ ok: true, total: bizList.length, demoMode: true });
+  }
   if (waStatus !== "connected") return res.status(400).json({ error: "WhatsApp not connected. Connect first." });
   if (sendState.running) return res.status(400).json({ error: "Send already in progress" });
 
@@ -1091,8 +1168,8 @@ app.post("/api/wa/send", async (req, res) => {
   })();
 });
 
-app.post("/api/wa/pause", (req, res) => { sendState.paused = !sendState.paused; res.json({ ok: true, paused: sendState.paused }); });
-app.post("/api/wa/stop", (req, res) => { sendState.running = false; sendState.paused = false; res.json({ ok: true }); });
+app.post("/api/wa/pause", (req, res) => { if (DEMO_MODE) return res.json({ ok: true, paused: false }); sendState.paused = !sendState.paused; res.json({ ok: true, paused: sendState.paused }); });
+app.post("/api/wa/stop", (req, res) => { if (DEMO_MODE) return res.json({ ok: true }); sendState.running = false; sendState.paused = false; res.json({ ok: true }); });
 
 app.get("/api/send-log", async (req, res) => {
   const { rows } = await pool.query("SELECT * FROM send_log ORDER BY sent_at DESC LIMIT 200");
@@ -1123,8 +1200,15 @@ if (process.env.NODE_ENV !== "test") {
   const start = async () => {
     try {
       await initDb();
+
+      if (DEMO_MODE) {
+        const { seedDemoData } = await import("./seed-demo.js");
+        const result = await seedDemoData(pool);
+        logger.info({ seeded: result.seeded, count: result.count }, "demo mode seed");
+      }
+
       server = app.listen(PORT, () => {
-        logger.info({ port: PORT, database: DATABASE_URL }, "server started");
+        logger.info({ port: PORT, database: DATABASE_URL, demoMode: DEMO_MODE }, "server started");
       });
     } catch (err) {
       logger.error({ error: err.message }, "failed to start server");

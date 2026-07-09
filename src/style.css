@@ -193,6 +193,16 @@ body {
   flex-direction: column;
 }
 
+/* ── Demo banner ────────────────────────────────────── */
+.demo-banner {
+  background: #f59e0b;
+  color: #1a1a1a;
+  text-align: center;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* ── Header ─────────────────────────────────────────── */
 .app-header {
   background: var(--ink);
