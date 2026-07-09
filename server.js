@@ -308,7 +308,7 @@ app.get("/api/businesses", async (req, res) => {
   const { rows: countRows } = await pool.query(`SELECT COUNT(*)::int as n FROM businesses ${where}`, params);
   const total = countRows[0].n;
   const p = Math.max(1, parseInt(page, 10) || 1);
-  const ps = Math.min(500, Math.max(1, parseInt(pageSize, 10) || 100));
+  const ps = Math.min(10000, Math.max(1, parseInt(pageSize, 10) || 100));
   const totalPages = Math.max(1, Math.ceil(total / ps));
   params.push(ps, (p - 1) * ps);
   const { rows } = await pool.query(
@@ -593,12 +593,29 @@ async function upsertBusiness(b, location) {
     ]);
     return { ...row, id: existing_id, inserted: false };
   }
-  await pool.query(INSERT_BUSINESS_SQL, [
-    row.id, row.name, row.category, row.address, row.city, row.phone,
-    row.rating, row.reviews, row.website_url, row.website_status,
-    row.location_query, row.source, row.scraped_on,
-  ]);
-  return { ...row, inserted: true };
+  try {
+    await pool.query(INSERT_BUSINESS_SQL, [
+      row.id, row.name, row.category, row.address, row.city, row.phone,
+      row.rating, row.reviews, row.website_url, row.website_status,
+      row.location_query, row.source, row.scraped_on,
+    ]);
+    return { ...row, inserted: true };
+  } catch (err) {
+    if (err.code !== "23505") throw err;
+    let conflictId = await findExistingBusiness(row);
+    if (!conflictId) {
+      const { rows } = await pool.query("SELECT id FROM businesses WHERE id = $1", [row.id]);
+      if (rows.length > 0) conflictId = rows[0].id;
+    }
+    if (conflictId) {
+      await pool.query(UPDATE_BUSINESS_SQL, [
+        conflictId, row.category, row.address, row.city, row.rating, row.reviews,
+        row.website_url, row.website_status, row.location_query, row.scraped_on,
+      ]);
+      return { ...row, id: conflictId, inserted: false };
+    }
+    throw err;
+  }
 }
 
 // Re-check (or first-check) websites for a given set of business ids.
