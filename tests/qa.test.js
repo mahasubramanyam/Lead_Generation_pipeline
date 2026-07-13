@@ -385,7 +385,7 @@ describe("QA: Deduplication", () => {
    ═══════════════════════════════════════════════════════════ */
 describe("QA: Website checker", () => {
   it("6.1 accepts check-websites with ids array", async () => {
-    const { status, body } = await json("POST", "/check-websites", { ids: [] });
+    const { status, body } = await json("POST", "/check-websites", { ids: ["test-nonexistent-id"] });
     assert.equal(status, 200);
     assert.equal(body.ok, true);
   });

@@ -91,7 +91,7 @@ describe("Scraper API safeguards", () => {
 
 describe("Website checker safeguards", () => {
   it("accepts check-websites with ids array", async () => {
-    const { status, body } = await json("POST", "/check-websites", { ids: [] });
+    const { status, body } = await json("POST", "/check-websites", { ids: ["test-nonexistent-id"] });
     assert.equal(status, 200);
     assert.equal(body.ok, true);
   });

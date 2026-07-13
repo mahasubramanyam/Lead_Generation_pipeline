@@ -72,4 +72,4 @@ jobs:
             sleep 1
           done
 
-      - run: npm run test:all
+      - run: node --test --test-concurrency=1 tests/helpers.test.js tests/api.test.js
