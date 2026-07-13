@@ -916,26 +916,40 @@ app.post("/api/scrape", async (req, res) => {
 
 app.post("/api/scrape/cancel", async (req, res) => {
   if (DEMO_MODE) return res.json({ ok: true, cancelled: false });
-  const activeJobs = await scrapeQueue.getActive();
-  const waitingJobs = await scrapeQueue.getWaiting();
-  const jobs = [...activeJobs, ...waitingJobs];
-  if (jobs.length === 0) return res.json({ ok: true, cancelled: false });
-
-  for (const job of jobs) {
-    cancelledJobs.set(job.id, true);
+  try {
+    const result = await Promise.race([
+      (async () => {
+        const activeJobs = await scrapeQueue.getActive();
+        const waitingJobs = await scrapeQueue.getWaiting();
+        const jobs = [...activeJobs, ...waitingJobs];
+        if (jobs.length === 0) return { ok: true, cancelled: false };
+        for (const job of jobs) cancelledJobs.set(job.id, true);
+        return { ok: true, cancelled: true };
+      })(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+    ]);
+    return res.json(result);
+  } catch {
+    return res.json({ ok: true, cancelled: false, note: "queue unavailable" });
   }
-  res.json({ ok: true, cancelled: true });
 });
 
 app.get("/api/scrape/status/:jobId", async (req, res) => {
   if (DEMO_MODE) return res.json({ jobId: req.params.jobId, state: "completed", result: { count: 0, inserted: 0, updated: 0 }, error: null });
   const { jobId } = req.params;
-  const job = await scrapeQueue.getJob(jobId);
-  if (!job) return res.status(404).json({ error: "Job not found" });
-  const state = await job.getState();
-  const result = state === "completed" ? job.returnvalue : null;
-  const failedReason = state === "failed" ? job.failedReason : null;
-  res.json({ jobId, state, result, error: failedReason });
+  try {
+    const job = await Promise.race([
+      scrapeQueue.getJob(jobId),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+    ]);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    const state = await job.getState();
+    const result = state === "completed" ? job.returnvalue : null;
+    const failedReason = state === "failed" ? job.failedReason : null;
+    res.json({ jobId, state, result, error: failedReason });
+  } catch {
+    return res.status(503).json({ error: "Queue unavailable" });
+  }
 });
 
 // ─── WhatsApp Session State ───────────────────────────────────────
