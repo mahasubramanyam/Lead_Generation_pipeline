@@ -1,0 +1,131 @@
+{"level":30,"time":1783574645234,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","port":"5000","database":"postgresql://user:pass@localhost:5432/lead_pipeline","msg":"server started"}
+{"level":30,"time":1783574676384,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/auth/check","status":401,"duration":15,"msg":"request"}
+{"level":30,"time":1783574729798,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574729486","msg":"user registered"}
+{"level":30,"time":1783574729798,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/register","status":200,"duration":174,"msg":"request"}
+{"level":30,"time":1783574729893,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/login","status":401,"duration":77,"msg":"request"}
+{"level":30,"time":1783574729901,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/auth/check","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574729905,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/stats","status":401,"duration":1,"msg":"request"}
+{"level":30,"time":1783574729911,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/auth/check","status":200,"duration":1,"msg":"request"}
+{"level":30,"time":1783574729917,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/register","status":409,"duration":2,"msg":"request"}
+{"level":30,"time":1783574729922,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/register","status":400,"duration":1,"msg":"request"}
+{"level":30,"time":1783574729926,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/register","status":400,"duration":1,"msg":"request"}
+{"level":30,"time":1783574729932,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/login","status":401,"duration":3,"msg":"request"}
+{"level":30,"time":1783574730015,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/change-password","status":401,"duration":80,"msg":"request"}
+{"level":30,"time":1783574730019,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/change-password","status":400,"duration":1,"msg":"request"}
+{"level":30,"time":1783574730182,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574729486","msg":"password changed"}
+{"level":30,"time":1783574730183,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/change-password","status":200,"duration":161,"msg":"request"}
+{"level":30,"time":1783574730340,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574729486","msg":"password changed"}
+{"level":30,"time":1783574730341,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/change-password","status":200,"duration":156,"msg":"request"}
+{"level":30,"time":1783574730504,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574729486","msg":"password changed"}
+{"level":30,"time":1783574730505,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/change-password","status":200,"duration":162,"msg":"request"}
+{"level":30,"time":1783574730586,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574729486","msg":"user logged in"}
+{"level":30,"time":1783574730587,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/login","status":200,"duration":80,"msg":"request"}
+{"level":30,"time":1783574730745,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574729486","msg":"password changed"}
+{"level":30,"time":1783574730745,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/change-password","status":200,"duration":157,"msg":"request"}
+{"level":30,"time":1783574730824,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574729486","msg":"user logged in"}
+{"level":30,"time":1783574730824,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/login","status":200,"duration":77,"msg":"request"}
+{"level":50,"time":1783574730831,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","error":"Unexpected token 'n', \"not valid json {{{\" is not valid JSON","stack":"SyntaxError: Unexpected token 'n', \"not valid json {{{\" is not valid JSON\n    at JSON.parse (<anonymous>)\n    at createStrictSyntaxError (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\body-parser\\lib\\types\\json.js:165:10)\n    at parse (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\body-parser\\lib\\types\\json.js:86:15)\n    at C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\body-parser\\lib\\read.js:128:18\n    at AsyncResource.runInAsyncScope (node:async_hooks:227:14)\n    at invokeCallback (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\raw-body\\index.js:238:16)\n    at done (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\raw-body\\index.js:227:7)\n    at IncomingMessage.onEnd (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\raw-body\\index.js:287:7)\n    at IncomingMessage.emit (node:events:509:28)\n    at endReadableNT (node:internal/streams/readable:1729:12)","msg":"unhandled error"}
+{"level":30,"time":1783574730838,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/config","status":200,"duration":5,"msg":"request"}
+{"level":30,"time":1783574730842,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/stats","status":404,"duration":3,"msg":"request"}
+{"level":30,"time":1783574730846,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/scrape","status":400,"duration":2,"msg":"request"}
+{"level":30,"time":1783574730871,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":22,"msg":"request"}
+{"level":30,"time":1783574730878,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":6,"msg":"request"}
+{"level":30,"time":1783574730888,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/businesses","status":200,"duration":8,"msg":"request"}
+{"level":30,"time":1783574730895,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"DELETE","path":"/api/businesses","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574730907,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/businesses","status":200,"duration":5,"msg":"request"}
+{"level":30,"time":1783574730919,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/wa/pause","status":200,"duration":9,"msg":"request"}
+{"level":30,"time":1783574730937,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/scrape","status":400,"duration":2,"msg":"request"}
+{"level":30,"time":1783574730942,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/scrape","status":400,"duration":2,"msg":"request"}
+{"level":30,"time":1783574730947,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/scrape","status":429,"duration":2,"msg":"request"}
+{"level":30,"time":1783574730963,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/scrape/cancel","status":200,"duration":13,"msg":"request"}
+{"level":30,"time":1783574730972,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/scrape/status/nonexistent-job-1783574730964","status":404,"duration":7,"msg":"request"}
+{"level":30,"time":1783574731011,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/businesses","status":200,"duration":36,"msg":"request"}
+{"level":30,"time":1783574731020,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":8,"msg":"request"}
+{"level":30,"time":1783574731028,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":6,"msg":"request"}
+{"level":30,"time":1783574731037,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":7,"msg":"request"}
+{"level":30,"time":1783574731045,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":7,"msg":"request"}
+{"level":30,"time":1783574731067,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"PATCH","path":"/api/businesses/qa-crud-1783574729527","status":200,"duration":19,"msg":"request"}
+{"level":30,"time":1783574731077,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":7,"msg":"request"}
+{"level":30,"time":1783574731081,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"PATCH","path":"/api/businesses/qa-crud-1783574729527","status":400,"duration":1,"msg":"request"}
+{"level":30,"time":1783574731089,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"PATCH","path":"/api/businesses/qa-crud-1783574729527","status":200,"duration":5,"msg":"request"}
+{"level":30,"time":1783574731099,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"PATCH","path":"/api/businesses/qa-crud-1783574729527","status":200,"duration":6,"msg":"request"}
+{"level":30,"time":1783574731122,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/businesses","status":200,"duration":20,"msg":"request"}
+{"level":30,"time":1783574731130,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"DELETE","path":"/api/businesses","status":200,"duration":6,"msg":"request"}
+{"level":30,"time":1783574731138,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":6,"msg":"request"}
+{"level":30,"time":1783574731153,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"DELETE","path":"/api/businesses","status":200,"duration":6,"msg":"request"}
+{"level":30,"time":1783574731157,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"DELETE","path":"/api/businesses","status":200,"duration":1,"msg":"request"}
+{"level":30,"time":1783574731177,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/businesses","status":200,"duration":9,"msg":"request"}
+{"level":30,"time":1783574731191,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/businesses","status":200,"duration":9,"msg":"request"}
+{"level":30,"time":1783574731200,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574731209,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"DELETE","path":"/api/businesses","status":200,"duration":5,"msg":"request"}
+{"level":30,"time":1783574731217,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/check-websites","status":200,"duration":3,"msg":"request"}
+{"level":30,"time":1783574731225,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/check-websites","status":200,"duration":3,"msg":"request"}
+{"level":50,"time":1783574731231,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","error":"Unexpected token 'n', \"not json\" is not valid JSON","stack":"SyntaxError: Unexpected token 'n', \"not json\" is not valid JSON\n    at JSON.parse (<anonymous>)\n    at createStrictSyntaxError (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\body-parser\\lib\\types\\json.js:165:10)\n    at parse (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\body-parser\\lib\\types\\json.js:86:15)\n    at C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\body-parser\\lib\\read.js:128:18\n    at AsyncResource.runInAsyncScope (node:async_hooks:227:14)\n    at invokeCallback (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\raw-body\\index.js:238:16)\n    at done (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\raw-body\\index.js:227:7)\n    at IncomingMessage.onEnd (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\raw-body\\index.js:287:7)\n    at IncomingMessage.emit (node:events:509:28)\n    at endReadableNT (node:internal/streams/readable:1729:12)","msg":"unhandled error"}
+{"level":30,"time":1783574731247,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/stats","status":200,"duration":11,"msg":"request"}
+{"level":30,"time":1783574731255,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/pipeline-history","status":200,"duration":5,"msg":"request"}
+{"level":30,"time":1783574731263,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/send-log","status":200,"duration":5,"msg":"request"}
+{"level":30,"time":1783574731270,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/wa/send","status":400,"duration":2,"msg":"request"}
+{"level":30,"time":1783574731277,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/wa/send","status":400,"duration":1,"msg":"request"}
+{"level":30,"time":1783574731282,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/wa/pause","status":200,"duration":1,"msg":"request"}
+{"level":30,"time":1783574731286,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/wa/pause","status":200,"duration":1,"msg":"request"}
+{"level":30,"time":1783574731290,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/wa/stop","status":200,"duration":1,"msg":"request"}
+{"level":30,"time":1783574731295,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/wa/disconnect","status":200,"duration":1,"msg":"request"}
+{"level":30,"time":1783574731300,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/wa/status","status":200,"duration":2,"msg":"request"}
+{"level":30,"time":1783574731310,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/config","status":200,"duration":6,"msg":"request"}
+{"level":30,"time":1783574731321,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/config","status":200,"duration":7,"msg":"request"}
+{"level":30,"time":1783574731334,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/config","status":200,"duration":8,"msg":"request"}
+{"level":30,"time":1783574731339,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/config","status":200,"duration":2,"msg":"request"}
+{"level":30,"time":1783574731355,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/config","status":200,"duration":9,"msg":"request"}
+{"level":30,"time":1783574731360,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/config","status":200,"duration":2,"msg":"request"}
+{"level":30,"time":1783574731380,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/businesses","status":200,"duration":16,"msg":"request"}
+{"level":30,"time":1783574731395,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses/qa-comp-main-1783574729529/competitor-examples","status":200,"duration":12,"msg":"request"}
+{"level":30,"time":1783574731401,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses/nonexistent-1783574731395/competitor-examples","status":404,"duration":3,"msg":"request"}
+{"level":30,"time":1783574731413,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/businesses","status":200,"duration":7,"msg":"request"}
+{"level":30,"time":1783574731420,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses/qa-nocity-1783574731402/competitor-examples","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574731428,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"DELETE","path":"/api/businesses","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574731436,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"DELETE","path":"/api/businesses","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574731444,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574731452,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":5,"msg":"request"}
+{"level":30,"time":1783574731459,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574731470,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/config","status":200,"duration":7,"msg":"request"}
+{"level":30,"time":1783574731476,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/config","status":200,"duration":3,"msg":"request"}
+{"level":30,"time":1783574731488,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/stats","status":200,"duration":9,"msg":"request"}
+{"level":30,"time":1783574731501,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/businesses","status":200,"duration":9,"msg":"request"}
+{"level":30,"time":1783574731513,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"PATCH","path":"/api/businesses/qa-hist-1783574731489","status":200,"duration":8,"msg":"request"}
+{"level":30,"time":1783574731518,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/pipeline-history","status":200,"duration":2,"msg":"request"}
+{"level":30,"time":1783574731525,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"DELETE","path":"/api/businesses","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574731531,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/send-log","status":200,"duration":3,"msg":"request"}
+{"level":30,"time":1783574731539,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574731546,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"DELETE","path":"/api/businesses","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574893859,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574893409","msg":"user registered"}
+{"level":30,"time":1783574893870,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/register","status":200,"duration":320,"msg":"request"}
+{"level":30,"time":1783574894048,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/login","status":401,"duration":142,"msg":"request"}
+{"level":30,"time":1783574894060,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/auth/check","status":401,"duration":5,"msg":"request"}
+{"level":30,"time":1783574894065,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/stats","status":401,"duration":1,"msg":"request"}
+{"level":30,"time":1783574894072,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/auth/check","status":401,"duration":2,"msg":"request"}
+{"level":30,"time":1783574894080,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/register","status":409,"duration":4,"msg":"request"}
+{"level":30,"time":1783574894084,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/register","status":400,"duration":0,"msg":"request"}
+{"level":30,"time":1783574894090,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/register","status":400,"duration":1,"msg":"request"}
+{"level":30,"time":1783574894098,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/login","status":401,"duration":3,"msg":"request"}
+{"level":30,"time":1783574894183,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/change-password","status":401,"duration":80,"msg":"request"}
+{"level":30,"time":1783574894187,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/change-password","status":400,"duration":1,"msg":"request"}
+{"level":30,"time":1783574894336,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574893409","msg":"password changed"}
+{"level":30,"time":1783574894336,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/change-password","status":200,"duration":146,"msg":"request"}
+{"level":30,"time":1783574894485,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574893409","msg":"password changed"}
+{"level":30,"time":1783574894485,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/change-password","status":200,"duration":147,"msg":"request"}
+{"level":30,"time":1783574894631,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574893409","msg":"password changed"}
+{"level":30,"time":1783574894631,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/change-password","status":200,"duration":144,"msg":"request"}
+{"level":30,"time":1783574894706,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574893409","msg":"user logged in"}
+{"level":30,"time":1783574894706,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/login","status":200,"duration":73,"msg":"request"}
+{"level":30,"time":1783574894851,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574893409","msg":"password changed"}
+{"level":30,"time":1783574894852,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/change-password","status":200,"duration":144,"msg":"request"}
+{"level":30,"time":1783574894925,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","username":"qa-1783574893409","msg":"user logged in"}
+{"level":30,"time":1783574894925,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/auth/login","status":200,"duration":72,"msg":"request"}
+{"level":50,"time":1783574894932,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","error":"Unexpected token 'n', \"not valid json {{{\" is not valid JSON","stack":"SyntaxError: Unexpected token 'n', \"not valid json {{{\" is not valid JSON\n    at JSON.parse (<anonymous>)\n    at createStrictSyntaxError (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\body-parser\\lib\\types\\json.js:165:10)\n    at parse (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\body-parser\\lib\\types\\json.js:86:15)\n    at C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\body-parser\\lib\\read.js:128:18\n    at AsyncResource.runInAsyncScope (node:async_hooks:227:14)\n    at invokeCallback (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\raw-body\\index.js:238:16)\n    at done (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\raw-body\\index.js:227:7)\n    at IncomingMessage.onEnd (C:\\Users\\mahas\\OneDrive\\maha1\\Documents\\WEB-AGENCY\\lead-pipeline-competitor-cg\\lead-pipeline\\node_modules\\raw-body\\index.js:287:7)\n    at IncomingMessage.emit (node:events:509:28)\n    at endReadableNT (node:internal/streams/readable:1729:12)","msg":"unhandled error"}
+{"level":30,"time":1783574894939,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/config","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574894945,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/stats","status":404,"duration":3,"msg":"request"}
+{"level":30,"time":1783574894949,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/scrape","status":400,"duration":2,"msg":"request"}
+{"level":30,"time":1783574894967,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":16,"msg":"request"}
+{"level":30,"time":1783574894973,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"GET","path":"/api/businesses","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574894980,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"POST","path":"/api/businesses","status":200,"duration":4,"msg":"request"}
+{"level":30,"time":1783574894986,"pid":27296,"hostname":"LAPTOP-EEU5VLH9","method":"DELETE","path":"/api/businesses","status":200,"duration":4,"msg":"request"}

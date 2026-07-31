@@ -1,0 +1,29 @@
+C:\Users\mahas\OneDrive\maha1\Documents\WEB-AGENCY\lead-pipeline-competitor-cg\lead-pipeline\node_modules\pg-pool\index.js:45
+    Error.captureStackTrace(err)
+          ^
+
+error: duplicate key value violates unique constraint "businesses_pkey"
+    at C:\Users\mahas\OneDrive\maha1\Documents\WEB-AGENCY\lead-pipeline-competitor-cg\lead-pipeline\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async upsertBusiness (file:///C:/Users/mahas/OneDrive/maha1/Documents/WEB-AGENCY/lead-pipeline-competitor-cg/lead-pipeline/server.js:596:3)
+    at async file:///C:/Users/mahas/OneDrive/maha1/Documents/WEB-AGENCY/lead-pipeline-competitor-cg/lead-pipeline/server.js:327:19 {
+  length: 195,
+  severity: 'ERROR',
+  code: '23505',
+  detail: 'Key (id)=(x) already exists.',
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: 'public',
+  table: 'businesses',
+  column: undefined,
+  dataType: undefined,
+  constraint: 'businesses_pkey',
+  file: 'nbtinsert.c',
+  line: '664',
+  routine: '_bt_check_unique'
+}
+
+Node.js v24.15.0
