@@ -702,7 +702,7 @@ function WhatsAppTab({ selectedIds, setSelectedIds }) {
   useEffect(() => {
     if (selectedIds.size === 0) { setTargets([]); return; }
     (async () => {
-      const all = await api("/businesses");
+      const all = (await api("/businesses?page=1&pageSize=100000")).data;
       const seenPhones = new Set();
       const uniqueTargets = [];
       for (const b of all.filter(b => selectedIds.has(b.id) && b.phone)) {
