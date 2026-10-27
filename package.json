@@ -12,7 +12,8 @@
     "test": "node --test tests/helpers.test.js",
     "test:api": "node --test tests/api.test.js",
     "test:tenant": "node --test tests/tenant.test.js",
-    "test:all": "node --test tests/helpers.test.js tests/api.test.js tests/tenant.test.js",
+    "test:dedup": "node --test tests/dedup.test.js",
+    "test:all": "node --test tests/helpers.test.js tests/api.test.js tests/tenant.test.js tests/dedup.test.js",
     "lint": "node --check server.js swagger.js vite.config.js"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
     "express-rate-limit": "^8.5.2",
     "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
+    "libphonenumber-js": "^1.13.15",
     "papaparse": "^5.4.1",
     "pg": "^8.22.0",
     "pino": "^10.3.1",
