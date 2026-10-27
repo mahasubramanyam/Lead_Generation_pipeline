@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 // Prevent server from starting during unit tests
 process.env.NODE_ENV = "test";
-const { normalizeUrl, looksLikeBotChallenge, cleanPhone } = await import("../server.js");
+const { normalizeUrl, looksLikeBotChallenge, cleanPhone, isPrivateIp } = await import("../server.js");
 
 describe("normalizeUrl", () => {
   it("adds https:// when protocol is missing", () => {
@@ -89,5 +89,28 @@ describe("cleanPhone", () => {
   });
   it("returns null for no digits", () => {
     assert.equal(cleanPhone("abc-xyz"), null);
+  });
+});
+
+describe("isPrivateIp", () => {
+  it("blocks localhost and loopback", () => {
+    assert.ok(isPrivateIp("127.0.0.1"));
+    assert.ok(isPrivateIp("::1"));
+    assert.ok(isPrivateIp("localhost"));
+  });
+  it("blocks private IPv4 ranges", () => {
+    assert.ok(isPrivateIp("10.0.0.1"));
+    assert.ok(isPrivateIp("192.168.1.1"));
+    assert.ok(isPrivateIp("172.16.0.1"));
+    assert.ok(isPrivateIp("169.254.169.254"));
+  });
+  it("blocks IPv6 private ranges", () => {
+    assert.ok(isPrivateIp("fe80::1"));
+    assert.ok(isPrivateIp("fc00::1"));
+    assert.ok(isPrivateIp("fd12:3456:789a::1"));
+  });
+  it("allows public IPs", () => {
+    assert.ok(!isPrivateIp("8.8.8.8"));
+    assert.ok(!isPrivateIp("1.1.1.1"));
   });
 });

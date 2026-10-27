@@ -156,9 +156,9 @@ export async function seedDemoData(pool) {
   for (const b of businesses) {
     try {
       await pool.query(
-        `INSERT INTO businesses (id, name, category, address, city, phone, rating, reviews, website_url, website_status, website_checked_at, location_query, source, scraped_on, pipeline_status, pipeline_updated_at, notes, message_sent, message_sent_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
-        [b.id, b.name, b.category, b.address, b.city, b.phone, b.rating, b.reviews, b.website_url, b.website_status, b.website_checked_at, b.location_query, b.source, b.scraped_on, b.pipeline_status, b.pipeline_updated_at, b.notes, b.message_sent, b.message_sent_at]
+        `INSERT INTO businesses (tenant_id, id, name, category, address, city, phone, rating, reviews, website_url, website_status, website_checked_at, location_query, source, scraped_on, pipeline_status, pipeline_updated_at, notes, message_sent, message_sent_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+        [1, b.id, b.name, b.category, b.address, b.city, b.phone, b.rating, b.reviews, b.website_url, b.website_status, b.website_checked_at, b.location_query, b.source, b.scraped_on, b.pipeline_status, b.pipeline_updated_at, b.notes, b.message_sent, b.message_sent_at]
       );
       inserted++;
     } catch (err) {
