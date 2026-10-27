@@ -116,7 +116,7 @@ if [ "$SKIP_BACKEND" = false ]; then
       "instance_type": "free",
       "ports": [{"port": 5000, "protocol": "http"}],
       "env": [
-        {"key": "DEMO_MODE", "value": "true"},
+        {"key": "DEMO_MODE", "value": "false"},
         {"key": "ALLOW_NETWORK", "value": "true"},
         {"key": "DATABASE_URL", "value": "'"$CONNECTION_URI"'"},
         {"key": "JWT_SECRET", "value": "'"$JWT_SECRET"'"},
@@ -174,7 +174,7 @@ echo "  Backend URL:  $BACKEND_URL"
 echo "  Frontend URL: $FRONTEND_URL"
 echo ""
 echo "  Environment Variables (set in Koyeb):"
-echo "    DEMO_MODE=true"
+echo "    DEMO_MODE=false"
 echo "    ALLOW_NETWORK=true"
 echo "    DATABASE_URL=$CONNECTION_URI"
 echo "    JWT_SECRET=$JWT_SECRET"

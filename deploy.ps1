@@ -131,7 +131,7 @@ if (-not $SkipBackend) {
           protocol = "http"
         })
         env = @(
-          @{ key = "DEMO_MODE"; value = "true" }
+          @{ key = "DEMO_MODE"; value = "false" }
           @{ key = "ALLOW_NETWORK"; value = "true" }
           @{ key = "DATABASE_URL"; value = $connectionUri }
           @{ key = "JWT_SECRET"; value = $JwtSecret }
@@ -221,7 +221,7 @@ Write-Host "  Backend URL:  $backendUrl" -ForegroundColor Green
 Write-Host "  Frontend URL: $frontendUrl" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Environment Variables (set these in Koyeb if manual):" -ForegroundColor Yellow
-Write-Host "    DEMO_MODE=true" -ForegroundColor Gray
+Write-Host "    DEMO_MODE=false" -ForegroundColor Gray
 Write-Host "    ALLOW_NETWORK=true" -ForegroundColor Gray
 Write-Host "    DATABASE_URL=$connectionUri" -ForegroundColor Gray
 Write-Host "    JWT_SECRET=$JwtSecret" -ForegroundColor Gray

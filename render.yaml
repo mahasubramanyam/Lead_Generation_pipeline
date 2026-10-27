@@ -6,7 +6,7 @@ services:
     startCommand: node server.js
     envVars:
       - key: DEMO_MODE
-        value: "true"
+        value: "false"
       - key: ALLOW_NETWORK
         value: "true"
       - key: JWT_SECRET

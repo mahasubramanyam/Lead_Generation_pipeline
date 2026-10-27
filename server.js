@@ -356,6 +356,12 @@ if (IS_PRODUCTION) {
   if (!process.env.JWT_SECRET || WEAK_JWT_SECRETS.has(process.env.JWT_SECRET) || process.env.JWT_SECRET.length < 32) {
     throw new Error("JWT_SECRET must be set to a strong value (at least 32 characters) in production");
   }
+  if (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === "") {
+    throw new Error("DATABASE_URL is required in production");
+  }
+  if (process.env.DEMO_MODE !== "false") {
+    throw new Error("DEMO_MODE must be explicitly set to 'false' in production");
+  }
 } else if (!process.env.JWT_SECRET || WEAK_JWT_SECRETS.has(process.env.JWT_SECRET) || process.env.JWT_SECRET.length < 16) {
   logger.warn("JWT_SECRET is weak or missing; using development-only secret. Set JWT_SECRET before deploying.");
 }
@@ -2176,7 +2182,7 @@ if (process.env.NODE_ENV !== "test") {
     try {
       await initDb();
 
-      if (DEMO_MODE) {
+      if (DEMO_MODE && !IS_PRODUCTION) {
         const { seedDemoData } = await import("./seed-demo.js");
         const result = await seedDemoData(pool);
         logger.info({ seeded: result.seeded, count: result.count }, "demo mode seed");
