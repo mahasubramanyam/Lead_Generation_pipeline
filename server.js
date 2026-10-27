@@ -486,7 +486,7 @@ app.post("/api/auth/register", async (req, res) => {
     let tenantId;
     try {
       await client.query("BEGIN");
-      if (DEMO_MODE) {
+      if (DEMO_MODE && !IS_PRODUCTION) {
         tenantId = 1;
       } else {
         const tenantName = `${normalized}'s workspace`;
@@ -1586,7 +1586,7 @@ async function upsertBusiness(b, location, tenantId = 1) {
 app.post("/api/check-websites", async (req, res) => {
   const { ids } = req.body || {};
   const tid = req.user.tenant_id;
-  if (DEMO_MODE) {
+  if (DEMO_MODE && !IS_PRODUCTION) {
     const statuses = ["working", "broken", "blocked"];
     const rowsToCheck = ids && ids.length
       ? (await pool.query(`SELECT id FROM leads WHERE tenant_id = $1 AND id IN (${ids.map((_, i) => `$${i + 2}`).join(",")})`, [tid, ...ids])).rows
@@ -1823,7 +1823,7 @@ app.post("/api/scrape", async (req, res) => {
   }
 
   const tid = req.user.tenant_id;
-  if (DEMO_MODE) {
+  if (DEMO_MODE && !IS_PRODUCTION) {
     let inserted = 0;
     let updated = 0;
     for (const cat of categories) {
@@ -1873,7 +1873,7 @@ app.post("/api/scrape", async (req, res) => {
 });
 
 app.post("/api/scrape/cancel", async (req, res) => {
-  if (DEMO_MODE) return res.json({ ok: true, cancelled: false });
+  if (DEMO_MODE && !IS_PRODUCTION) return res.json({ ok: true, cancelled: false });
   const activeJobs = await scrapeQueue.getActive();
   const waitingJobs = await scrapeQueue.getWaiting();
   const jobs = [...activeJobs, ...waitingJobs];
@@ -1886,7 +1886,7 @@ app.post("/api/scrape/cancel", async (req, res) => {
 });
 
 app.get("/api/scrape/status/:jobId", async (req, res) => {
-  if (DEMO_MODE) return res.json({ jobId: req.params.jobId, state: "completed", result: { count: 0, inserted: 0, updated: 0 }, error: null });
+  if (DEMO_MODE && !IS_PRODUCTION) return res.json({ jobId: req.params.jobId, state: "completed", result: { count: 0, inserted: 0, updated: 0 }, error: null });
   const { jobId } = req.params;
   const job = await scrapeQueue.getJob(jobId);
   if (!job) return res.status(404).json({ error: "Job not found" });
@@ -1904,7 +1904,7 @@ let sendQueue = [];
 let sendState = { running: false, paused: false, index: 0, sentCount: 0, failCount: 0, total: 0 };
 
 app.post("/api/wa/connect", async (req, res) => {
-  if (DEMO_MODE) return res.json({ ok: true, status: "connected", demoMode: true });
+  if (DEMO_MODE && !IS_PRODUCTION) return res.json({ ok: true, status: "connected", demoMode: true });
   if (waStatus === "connected") return res.json({ ok: true, status: "connected" });
 
   try {
@@ -1954,7 +1954,7 @@ app.post("/api/wa/connect", async (req, res) => {
 });
 
 app.get("/api/wa/status", async (req, res) => {
-  if (DEMO_MODE) return res.json({ status: "connected", sendState: { running: false, paused: false, index: 0, sentCount: 0, failCount: 0, total: 0 } });
+  if (DEMO_MODE && !IS_PRODUCTION) return res.json({ status: "connected", sendState: { running: false, paused: false, index: 0, sentCount: 0, failCount: 0, total: 0 } });
   if (waStatus === "connected" && waPage) {
     try {
       const stillConnected = await waPage.evaluate(() => {
@@ -1969,7 +1969,7 @@ app.get("/api/wa/status", async (req, res) => {
 });
 
 app.post("/api/wa/disconnect", async (req, res) => {
-  if (DEMO_MODE) return res.json({ ok: true });
+  if (DEMO_MODE && !IS_PRODUCTION) return res.json({ ok: true });
   sendState.running = false;
   if (waBrowser) { await waBrowser.close().catch(() => {}); }
   waBrowser = null; waPage = null; waStatus = "disconnected";
@@ -2043,7 +2043,7 @@ async function sendWhatsAppMessage(phone, message) {
 }
 
 app.post("/api/wa/send", async (req, res) => {
-  if (DEMO_MODE) {
+  if (DEMO_MODE && !IS_PRODUCTION) {
     const { businesses: bizList, message } = req.body;
     if (!bizList || !bizList.length) return res.status(400).json({ error: "No businesses provided" });
     const tid = req.user.tenant_id;
@@ -2128,8 +2128,8 @@ app.post("/api/wa/send", async (req, res) => {
   })();
 });
 
-app.post("/api/wa/pause", (req, res) => { if (DEMO_MODE) return res.json({ ok: true, paused: false }); sendState.paused = !sendState.paused; res.json({ ok: true, paused: sendState.paused }); });
-app.post("/api/wa/stop", (req, res) => { if (DEMO_MODE) return res.json({ ok: true }); sendState.running = false; sendState.paused = false; res.json({ ok: true }); });
+app.post("/api/wa/pause", (req, res) => { if (DEMO_MODE && !IS_PRODUCTION) return res.json({ ok: true, paused: false }); sendState.paused = !sendState.paused; res.json({ ok: true, paused: sendState.paused }); });
+app.post("/api/wa/stop", (req, res) => { if (DEMO_MODE && !IS_PRODUCTION) return res.json({ ok: true }); sendState.running = false; sendState.paused = false; res.json({ ok: true }); });
 
 app.get("/api/send-log", async (req, res) => {
   const { rows } = await pool.query("SELECT * FROM send_log WHERE tenant_id = $1 ORDER BY sent_at DESC LIMIT 200", [req.user.tenant_id]);
