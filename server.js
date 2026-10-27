@@ -8,6 +8,10 @@ import { fileURLToPath } from "url";
 import path from "path";
 import dns from "node:dns/promises";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
+import { registerConnector, listConnectors, validateConnectorConfig, ConnectorError } from "./server/connectors/framework.js";
+import osmConnector from "./server/connectors/osm.js";
+import webSearchConnector from "./server/connectors/webSearch.js";
+import { parseImportFile } from "./server/connectors/csvImport.js";
 import fs from "fs";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -19,6 +23,9 @@ import swaggerSpec from "./swagger.js";
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+
+registerConnector(osmConnector);
+registerConnector(webSearchConnector);
 const DATA_DIR = path.join(__dirname, "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
@@ -1113,6 +1120,93 @@ app.post("/api/leads/merge/:historyId/undo", async (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+// ─── Connector framework endpoints ─────────────────────────────────
+app.get("/api/connectors", async (req, res) => {
+  res.json({ data: listConnectors() });
+});
+
+app.post("/api/connectors/:id/validate", async (req, res) => {
+  try {
+    const result = validateConnectorConfig(req.params.id, req.body?.config || req.body || {});
+    res.json(result);
+  } catch (e) {
+    res.status(404).json({ error: e.message });
+  }
+});
+
+app.post("/api/connectors/osm/search", async (req, res) => {
+  const { query, location, limit = 20, config } = req.body || {};
+  const tid = req.user.tenant_id;
+  try {
+    const { results } = await osmConnector.search({ query, location, limit, config: config || {} });
+    let inserted = 0;
+    let updated = 0;
+    const leadIds = [];
+    for (const r of results) {
+      const out = await upsertBusiness(r, r.location_query || "", tid);
+      if (out.inserted) inserted++; else updated++;
+      leadIds.push(out.id);
+    }
+    res.json({ ok: true, provider: "openstreetmap", count: results.length, inserted, updated, leadIds });
+  } catch (e) {
+    const status = e.code === "not_configured" ? 400 : 502;
+    res.status(status).json({ error: e.message, code: e.code || "connector_error" });
+  }
+});
+
+app.post("/api/connectors/web-search/search", async (req, res) => {
+  const { query, location, limit = 10, config } = req.body || {};
+  const tid = req.user.tenant_id;
+  try {
+    const { results, provider } = await webSearchConnector.search({ query, location, limit, config: config || {} });
+    let inserted = 0;
+    let updated = 0;
+    const leadIds = [];
+    for (const r of results) {
+      const out = await upsertBusiness(r, r.location_query || "", tid);
+      if (out.inserted) inserted++; else updated++;
+      leadIds.push(out.id);
+    }
+    res.json({ ok: true, provider, count: results.length, inserted, updated, leadIds });
+  } catch (e) {
+    const status = e.code === "not_configured" ? 400 : 502;
+    res.status(status).json({ error: e.message, code: e.code || "connector_error", details: e.details });
+  }
+});
+
+app.post("/api/connectors/import/preview", async (req, res) => {
+  const { content, format = "csv" } = req.body || {};
+  try {
+    const result = parseImportFile({ contentBase64: content, format });
+    res.json({ ok: true, ...result, accepted: result.preview, acceptedCount: result.acceptedCount });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post("/api/connectors/import/commit", async (req, res) => {
+  const tid = req.user.tenant_id;
+  const { rows, source } = req.body || {};
+  if (!Array.isArray(rows)) return res.status(400).json({ error: "rows must be an array" });
+  if (rows.length === 0) return res.status(400).json({ error: "rows must not be empty" });
+  if (rows.length > 10000) return res.status(400).json({ error: "rows exceed limit of 10000" });
+  const src = source || { type: "csv_import", recordId: null };
+  let inserted = 0;
+  let updated = 0;
+  const leadIds = [];
+  for (const row of rows) {
+    const out = await upsertBusiness(row, row.location_query || "", tid);
+    // record source provenance via ingest-like source row
+    await pool.query(
+      "INSERT INTO lead_sources (tenant_id, lead_id, source_type, source_record_id, fetched_at, connector_version, confidence, metadata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+      [tid, out.id, src.type || "csv_import", src.recordId || null, new Date().toISOString(), "phase3-import", 1.0, JSON.stringify({ imported: true })]
+    ).catch(() => {});
+    if (out.inserted) inserted++; else updated++;
+    leadIds.push(out.id);
+  }
+  res.json({ ok: true, count: rows.length, inserted, updated, leadIds });
 });
 
 // ─── Stats endpoint ───────────────────────────────────────────────

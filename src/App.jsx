@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import ConnectorsTab from "./ConnectorsTab.jsx";
 
 const PIPELINE_STATUSES = [
   { key: "not_contacted", label: "Not Contacted", color: "var(--st-not_contacted)" },
@@ -152,6 +153,8 @@ function AuthenticatedApp({ user, demoMode }) {
           <button className={`tab-btn ${tab === "scrape" ? "active" : ""}`} onClick={() => setTab("scrape")}>Find Leads</button>
           <button className={`tab-btn ${tab === "leads" ? "active" : ""}`} onClick={() => setTab("leads")}>Ledger</button>
           <button className={`tab-btn ${tab === "whatsapp" ? "active" : ""}`} onClick={() => setTab("whatsapp")}>WhatsApp</button>
+          <button className={`tab-btn ${tab === "connectors" ? "active" : ""}`} onClick={() => setTab("connectors")}>Connectors</button>
+          <button className={`tab-btn ${tab === "connectors" ? "active" : ""}`} onClick={() => setTab("connectors")}>Connectors</button>
         </nav>
         <div className="user-info">
           <span className="user-badge">{user?.username}</span>
@@ -162,6 +165,8 @@ function AuthenticatedApp({ user, demoMode }) {
         {tab === "scrape" && <ScrapeTab demoMode={demoMode} onDone={() => setTab("leads")} />}
         {tab === "leads" && <LeadsTab selectedIds={selectedIds} setSelectedIds={setSelectedIds} />}
         {tab === "whatsapp" && <WhatsAppTab selectedIds={selectedIds} setSelectedIds={setSelectedIds} />}
+        {tab === "connectors" && <ConnectorsTab />}
+        {tab === "connectors" && <ConnectorsTab />}
       </main>
     </div>
   );
