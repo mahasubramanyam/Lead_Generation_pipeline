@@ -54,6 +54,99 @@ describe("E2a OSM compliance safety (production)", () => {
   });
 });
 
+describe("E2a fail-closed configuration (unit)", () => {
+  it("OSM isConfigured returns false when OSM_PUBLIC_DISCOVERY_ENABLED is unset", async () => {
+    const origEnabled = process.env.OSM_PUBLIC_DISCOVERY_ENABLED;
+    const origNodeEnv = process.env.NODE_ENV;
+    delete process.env.OSM_PUBLIC_DISCOVERY_ENABLED;
+    process.env.NODE_ENV = "development";
+    try {
+      const mod = await import("../server/connectors/osm.js?unset=" + Date.now());
+      const connector = mod.default;
+      assert.equal(connector.isConfigured(), false);
+    } finally {
+      if (origEnabled !== undefined) process.env.OSM_PUBLIC_DISCOVERY_ENABLED = origEnabled;
+      else delete process.env.OSM_PUBLIC_DISCOVERY_ENABLED;
+      if (origNodeEnv !== undefined) process.env.NODE_ENV = origNodeEnv;
+      else delete process.env.NODE_ENV;
+    }
+  });
+
+  it("OSM isConfigured returns false when NODE_ENV is missing (fail-closed)", async () => {
+    const origEnabled = process.env.OSM_PUBLIC_DISCOVERY_ENABLED;
+    const origNodeEnv = process.env.NODE_ENV;
+    process.env.OSM_PUBLIC_DISCOVERY_ENABLED = "true";
+    delete process.env.NODE_ENV;
+    try {
+      const mod = await import("../server/connectors/osm.js?missing=" + Date.now());
+      const connector = mod.default;
+      // Missing NODE_ENV must fail closed - discovery disabled.
+      assert.equal(connector.isConfigured(), false);
+    } finally {
+      if (origEnabled !== undefined) process.env.OSM_PUBLIC_DISCOVERY_ENABLED = origEnabled;
+      else delete process.env.OSM_PUBLIC_DISCOVERY_ENABLED;
+      if (origNodeEnv !== undefined) process.env.NODE_ENV = origNodeEnv;
+      else delete process.env.NODE_ENV;
+    }
+  });
+
+  it("OSM isConfigured returns false in production even with flag enabled", async () => {
+    const origEnabled = process.env.OSM_PUBLIC_DISCOVERY_ENABLED;
+    const origNodeEnv = process.env.NODE_ENV;
+    process.env.OSM_PUBLIC_DISCOVERY_ENABLED = "true";
+    process.env.NODE_ENV = "production";
+    try {
+      const mod = await import("../server/connectors/osm.js?prod=" + Date.now());
+      const connector = mod.default;
+      assert.equal(connector.isConfigured(), false);
+    } finally {
+      if (origEnabled !== undefined) process.env.OSM_PUBLIC_DISCOVERY_ENABLED = origEnabled;
+      else delete process.env.OSM_PUBLIC_DISCOVERY_ENABLED;
+      if (origNodeEnv !== undefined) process.env.NODE_ENV = origNodeEnv;
+      else delete process.env.NODE_ENV;
+    }
+  });
+
+  it("OSM isConfigured returns true only with explicit flag in non-production", async () => {
+    const origEnabled = process.env.OSM_PUBLIC_DISCOVERY_ENABLED;
+    const origNodeEnv = process.env.NODE_ENV;
+    process.env.OSM_PUBLIC_DISCOVERY_ENABLED = "true";
+    process.env.NODE_ENV = "development";
+    try {
+      const mod = await import("../server/connectors/osm.js?dev=" + Date.now());
+      const connector = mod.default;
+      assert.equal(connector.isConfigured(), true);
+    } finally {
+      if (origEnabled !== undefined) process.env.OSM_PUBLIC_DISCOVERY_ENABLED = origEnabled;
+      else delete process.env.OSM_PUBLIC_DISCOVERY_ENABLED;
+      if (origNodeEnv !== undefined) process.env.NODE_ENV = origNodeEnv;
+      else delete process.env.NODE_ENV;
+    }
+  });
+
+  it("OSM search throws compliance_restricted when disabled", async () => {
+    const origEnabled = process.env.OSM_PUBLIC_DISCOVERY_ENABLED;
+    const origNodeEnv = process.env.NODE_ENV;
+    delete process.env.OSM_PUBLIC_DISCOVERY_ENABLED;
+    process.env.NODE_ENV = "development";
+    try {
+      const mod = await import("../server/connectors/osm.js?disabled=" + Date.now());
+      const connector = mod.default;
+      try {
+        await connector.search({ query: "test", location: "Berlin", limit: 5 });
+        assert.fail("should have thrown");
+      } catch (e) {
+        assert.equal(e.code, "compliance_restricted");
+      }
+    } finally {
+      if (origEnabled !== undefined) process.env.OSM_PUBLIC_DISCOVERY_ENABLED = origEnabled;
+      else delete process.env.OSM_PUBLIC_DISCOVERY_ENABLED;
+      if (origNodeEnv !== undefined) process.env.NODE_ENV = origNodeEnv;
+      else delete process.env.NODE_ENV;
+    }
+  });
+});
+
 describe("E2a web-search still works", () => {
   it("web search returns not_configured without credentials", async () => {
     const r = await json("POST", "/connectors/web-search/search", { query: "test", location: "Berlin" });

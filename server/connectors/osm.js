@@ -15,9 +15,17 @@
 
 import { ConnectorError, safeFetch, withRetry, sleep, normalizeLead, IntegrationStatus } from "./framework.js";
 
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const NODE_ENV = process.env.NODE_ENV || "";
+const IS_PRODUCTION = NODE_ENV === "production";
 
-const COMPLIANCE_MESSAGE = "Public Nominatim business discovery is disabled in production: the OSMF Nominatim Usage Policy forbids systematic POI queries and reselling of geocoding results for lead discovery. Deploy a self-hosted Nominatim instance or use a compliant third-party provider. See https://operations.osmfoundation.org/policies/nominatim";
+// Fail-closed: public Nominatim discovery is disabled unless explicitly opted in.
+// Production always rejects. Missing NODE_ENV also rejects (fail-closed).
+// Only explicitly non-production environments (development, test) with the flag enabled are allowed.
+const OSM_PUBLIC_DISCOVERY_ENABLED = process.env.OSM_PUBLIC_DISCOVERY_ENABLED === "true";
+const IS_EXPLICIT_NON_PRODUCTION = NODE_ENV === "development" || NODE_ENV === "test";
+const OSM_DISCOVERY_ALLOWED = OSM_PUBLIC_DISCOVERY_ENABLED && IS_EXPLICIT_NON_PRODUCTION && !IS_PRODUCTION;
+
+const COMPLIANCE_MESSAGE = "Public Nominatim business discovery is disabled: the OSMF Nominatim Usage Policy forbids systematic POI queries and reselling of geocoding results for lead discovery. To enable for local development/testing only, set OSM_PUBLIC_DISCOVERY_ENABLED=true and NODE_ENV=development (or test). Missing or invalid configuration is treated as disabled. For production, deploy a self-hosted Nominatim instance or use a compliant third-party provider. See https://operations.osmfoundation.org/policies/nominatim";
 
 let lastRequestAt = 0;
 
@@ -59,9 +67,8 @@ const osmConnector = {
     optional: ["baseUrl", "userAgent", "email", "country"],
   },
   isConfigured() {
-    // Public Nominatim is not approved for production business discovery.
-    // In non-production, the connector is available for testing.
-    return !IS_PRODUCTION;
+    // Fail-closed: only enabled when explicitly opted in for non-production.
+    return OSM_DISCOVERY_ALLOWED;
   },
   isLegacy() {
     return false;
@@ -72,14 +79,14 @@ const osmConnector = {
     if (config?.country && !VALID_COUNTRY_CODES.has(String(config.country).toLowerCase())) {
       errors.push("country must be a valid ISO 3166-1 alpha-2 code");
     }
-    if (IS_PRODUCTION) {
+    if (!OSM_DISCOVERY_ALLOWED) {
       errors.push(COMPLIANCE_MESSAGE);
     }
     return { ok: errors.length === 0, errors };
   },
   async getStatus(config = {}) {
     this.lastCheck = new Date().toISOString();
-    if (IS_PRODUCTION) {
+    if (!OSM_DISCOVERY_ALLOWED) {
       this.lastError = "compliance_restricted";
       return { status: IntegrationStatus.UNAVAILABLE, message: COMPLIANCE_MESSAGE, error: "compliance_restricted" };
     }
@@ -107,7 +114,7 @@ const osmConnector = {
     }
   },
   async search({ query = "", location = "", country = "", category = "", limit = 20, config = {} } = {}) {
-    if (IS_PRODUCTION) {
+    if (!OSM_DISCOVERY_ALLOWED) {
       throw new ConnectorError("compliance_restricted", COMPLIANCE_MESSAGE);
     }
     const q = [category, query, location].filter(Boolean).join(" ").trim();

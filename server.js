@@ -1211,8 +1211,11 @@ app.post("/api/connectors/:id/validate", async (req, res) => {
 app.post("/api/connectors/osm/search", async (req, res) => {
   const { query, location, country, category, limit = 20, config } = req.body || {};
   const tid = req.user.tenant_id;
-  if (process.env.NODE_ENV === "production") {
-    return res.status(503).json({ error: "Public OSM/Nominatim business discovery is disabled in production: the OSMF Nominatim Usage Policy forbids systematic POI queries and reselling of geocoding results. Deploy a self-hosted Nominatim instance or use a compliant third-party provider.", code: "compliance_restricted" });
+  const nodeEnv = process.env.NODE_ENV || "";
+  const isExplicitNonProduction = nodeEnv === "development" || nodeEnv === "test";
+  const osmDiscoveryAllowed = process.env.OSM_PUBLIC_DISCOVERY_ENABLED === "true" && isExplicitNonProduction && nodeEnv !== "production";
+  if (!osmDiscoveryAllowed) {
+    return res.status(503).json({ error: "Public OSM/Nominatim business discovery is disabled: the OSMF Nominatim Usage Policy forbids systematic POI queries and reselling of geocoding results. To enable for local development/testing only, set OSM_PUBLIC_DISCOVERY_ENABLED=true and NODE_ENV=development (or test). Missing or invalid configuration is treated as disabled. For production, deploy a self-hosted Nominatim instance or use a compliant third-party provider. See https://operations.osmfoundation.org/policies/nominatim", code: "compliance_restricted" });
   }
   try {
     if (limit && (Number(limit) < 1 || Number(limit) > 50)) {
