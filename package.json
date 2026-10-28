@@ -15,9 +15,10 @@
     "test:dedup": "node --test tests/dedup.test.js",
     "test:connectors": "node --test tests/connectors.test.js",
     "test:production": "node --test tests/production.test.js",
-    "test:all": "node --test tests/helpers.test.js tests/api.test.js tests/qa.test.js tests/tenant.test.js tests/dedup.test.js tests/connectors.test.js tests/production.test.js tests/connector-status.test.js",
+    "test:all": "node --test tests/helpers.test.js tests/api.test.js tests/qa.test.js tests/tenant.test.js tests/dedup.test.js tests/connectors.test.js tests/production.test.js tests/connector-status.test.js tests/connector-e1.test.js",
     "lint": "node --check server.js swagger.js vite.config.js",
-    "test:connector-status": "node --test tests/connector-status.test.js"
+    "test:connector-status": "node --test tests/connector-status.test.js",
+    "test:connector-e1": "node --test tests/connector-e1.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

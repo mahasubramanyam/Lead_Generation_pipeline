@@ -31,6 +31,8 @@ export default function ConnectorsTab() {
   const [connectors, setConnectors] = useState([]);
   const [osmQuery, setOsmQuery] = useState("");
   const [osmLocation, setOsmLocation] = useState("");
+  const [osmCountry, setOsmCountry] = useState("");
+  const [osmCategory, setOsmCategory] = useState("");
   const [osmResult, setOsmResult] = useState(null);
   const [osmLoading, setOsmLoading] = useState(false);
   const [osmError, setOsmError] = useState(null);
@@ -87,7 +89,7 @@ export default function ConnectorsTab() {
     try {
       const res = await api("/api/connectors/osm/search", {
         method: "POST",
-        body: JSON.stringify({ query: osmQuery, location: osmLocation, limit: 20 }),
+        body: JSON.stringify({ query: osmQuery, location: osmLocation, country: osmCountry, category: osmCategory, limit: 20 }),
       });
       setOsmResult(res);
     } catch (e) {
@@ -160,12 +162,20 @@ export default function ConnectorsTab() {
         <p className="desc">Uses the public Nominatim service. Respect its usage policy; requests are rate-limited to one per second.</p>
         <div className="row">
           <div className="field" style={{ minWidth: 220 }}>
-            <label>Business / category</label>
+            <label>Business / query</label>
             <input type="text" value={osmQuery} onChange={(e) => setOsmQuery(e.target.value)} placeholder="e.g. bakeries" />
           </div>
           <div className="field" style={{ minWidth: 220 }}>
             <label>Location</label>
             <input type="text" value={osmLocation} onChange={(e) => setOsmLocation(e.target.value)} placeholder="e.g. Berlin" />
+          </div>
+          <div className="field" style={{ minWidth: 120 }}>
+            <label>Country (ISO)</label>
+            <input type="text" value={osmCountry} onChange={(e) => setOsmCountry(e.target.value)} placeholder="e.g. de" maxLength={2} />
+          </div>
+          <div className="field" style={{ minWidth: 160 }}>
+            <label>Category</label>
+            <input type="text" value={osmCategory} onChange={(e) => setOsmCategory(e.target.value)} placeholder="e.g. restaurant" />
           </div>
           <div className="field">
             <label>&nbsp;</label>
@@ -173,7 +183,8 @@ export default function ConnectorsTab() {
           </div>
         </div>
         {osmError && <p className="helper-text" style={{ color: "var(--web-no_website)" }}>{osmError}</p>}
-        {osmResult && (
+        {osmResult && osmResult.count === 0 && <p className="helper-text">No results found.</p>}
+        {osmResult && osmResult.count > 0 && (
           <p className="helper-text">Found {osmResult.count} results — inserted {osmResult.inserted}, updated {osmResult.updated}.</p>
         )}
       </div>

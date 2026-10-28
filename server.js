@@ -1209,10 +1209,14 @@ app.post("/api/connectors/:id/validate", async (req, res) => {
 });
 
 app.post("/api/connectors/osm/search", async (req, res) => {
-  const { query, location, limit = 20, config } = req.body || {};
+  const { query, location, country, category, limit = 20, config } = req.body || {};
   const tid = req.user.tenant_id;
   try {
-    const { results } = await osmConnector.search({ query, location, limit, config: config || {} });
+    if (limit && (Number(limit) < 1 || Number(limit) > 50)) {
+      return res.status(400).json({ error: "limit must be between 1 and 50" });
+    }
+    const result = await osmConnector.search({ query, location, country, category, limit, config: config || {} });
+    const { results } = result;
     let inserted = 0;
     let updated = 0;
     const leadIds = [];
@@ -1221,18 +1225,22 @@ app.post("/api/connectors/osm/search", async (req, res) => {
       if (out.inserted) inserted++; else updated++;
       leadIds.push(out.id);
     }
-    res.json({ ok: true, provider: "openstreetmap", count: results.length, inserted, updated, leadIds });
+    res.json({ ok: true, provider: "openstreetmap", count: results.length, inserted, updated, leadIds, countryFilter: result.countryFilter, categoryFilter: result.categoryFilter });
   } catch (e) {
-    const status = e.code === "not_configured" ? 400 : 502;
+    const status = e.code === "invalid_query" || e.code === "invalid_country" ? 400 : (e.code === "rate_limited" ? 429 : 502);
     res.status(status).json({ error: e.message, code: e.code || "connector_error" });
   }
 });
 
 app.post("/api/connectors/web-search/search", async (req, res) => {
-  const { query, location, limit = 10, config } = req.body || {};
+  const { query, location, country, limit = 10, config } = req.body || {};
   const tid = req.user.tenant_id;
   try {
-    const { results, provider } = await webSearchConnector.search({ query, location, limit, config: config || {} });
+    if (limit && (Number(limit) < 1 || Number(limit) > 20)) {
+      return res.status(400).json({ error: "limit must be between 1 and 20" });
+    }
+    const result = await webSearchConnector.search({ query, location, country, limit, config: config || {} });
+    const { results, provider } = result;
     let inserted = 0;
     let updated = 0;
     const leadIds = [];
@@ -1241,9 +1249,9 @@ app.post("/api/connectors/web-search/search", async (req, res) => {
       if (out.inserted) inserted++; else updated++;
       leadIds.push(out.id);
     }
-    res.json({ ok: true, provider, count: results.length, inserted, updated, leadIds });
+    res.json({ ok: true, provider, count: results.length, inserted, updated, leadIds, countryFilter: result.countryFilter, countryFilterSupported: result.countryFilterSupported, countryFilterMethod: result.countryFilterMethod });
   } catch (e) {
-    const status = e.code === "not_configured" ? 400 : 502;
+    const status = e.code === "not_configured" || e.code === "invalid_query" || e.code === "invalid_country" ? 400 : 502;
     res.status(status).json({ error: e.message, code: e.code || "connector_error", details: e.details });
   }
 });

@@ -38,7 +38,7 @@ describe("Connector framework", () => {
 
   it("osm search requires query or location", async () => {
     const r = await json("POST", "/connectors/osm/search", { query: "", location: "", limit: 5 });
-    assert.equal(r.status, 502);
+    assert.equal(r.status, 400);
     assert.ok(r.body.error);
   });
 
