@@ -1,4 +1,4 @@
-import { ConnectorError, safeFetch, withRetry, normalizeLead } from "./framework.js";
+import { ConnectorError, safeFetch, withRetry, normalizeLead, IntegrationStatus } from "./framework.js";
 
 function getConfig(config) {
   const provider = config?.provider || process.env.WEB_SEARCH_PROVIDER || "";
@@ -18,6 +18,9 @@ const webSearchConnector = {
     const { provider, apiKey } = getConfig(config || {});
     return Boolean(provider && apiKey);
   },
+  isLegacy() {
+    return false;
+  },
   validateConfig(config) {
     const { provider, apiKey } = getConfig(config || {});
     const errors = [];
@@ -26,6 +29,54 @@ const webSearchConnector = {
     else if (!allowed.includes(provider)) errors.push(`provider must be one of: ${allowed.join(", ")}`);
     if (!apiKey) errors.push("apiKey is required");
     return { ok: errors.length === 0, errors };
+  },
+  async getStatus(config = {}) {
+    this.lastCheck = new Date().toISOString();
+    const validation = this.validateConfig(config);
+    if (!validation.ok) {
+      this.lastError = validation.errors.join("; ");
+      return { status: IntegrationStatus.UNCONFIGURED, message: "Missing required config", errors: validation.errors };
+    }
+    const { provider, apiKey } = getConfig(config);
+    this.provider = provider;
+    try {
+      let testUrl, headers;
+      if (provider === "brave") {
+        testUrl = "https://api.search.brave.com/res/v1/web/search?q=test&count=1";
+        headers = { "X-Subscription-Token": apiKey, Accept: "application/json" };
+      } else if (provider === "bing") {
+        testUrl = "https://api.bing.microsoft.com/v7.0/search?q=test&count=1";
+        headers = { "Ocp-Apim-Subscription-Key": apiKey };
+      } else if (provider === "google_cse") {
+        const cx = process.env.GOOGLE_CSE_CX || "";
+        if (!cx) {
+          this.lastError = "GOOGLE_CSE_CX not set";
+          return { status: IntegrationStatus.UNCONFIGURED, message: "GOOGLE_CSE_CX required", error: "missing_cx" };
+        }
+        testUrl = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=test&num=1`;
+        headers = {};
+      } else {
+        return { status: IntegrationStatus.UNAVAILABLE, message: "Unsupported provider" };
+      }
+      const response = await safeFetch(testUrl, { headers }, 5000);
+      if (response.ok) {
+        this.lastError = null;
+        return { status: IntegrationStatus.CONNECTED, message: `${provider} reachable` };
+      }
+      if (response.status === 401 || response.status === 403) {
+        this.lastError = "Invalid credentials";
+        return { status: IntegrationStatus.FAILED, message: "Invalid or unauthorized credentials", error: "auth_failed" };
+      }
+      if (response.status === 429) {
+        this.lastError = "Rate limited";
+        return { status: IntegrationStatus.UNAVAILABLE, message: "Rate limited", error: "rate_limited" };
+      }
+      this.lastError = `HTTP ${response.status}`;
+      return { status: IntegrationStatus.FAILED, message: `${provider} returned ${response.status}`, error: `http_${response.status}` };
+    } catch (e) {
+      this.lastError = e.message;
+      return { status: IntegrationStatus.FAILED, message: e.message, error: e.code || "connection_failed" };
+    }
   },
   async search({ query = "", location = "", limit = 10, config = {} } = {}) {
     const validation = this.validateConfig(config);

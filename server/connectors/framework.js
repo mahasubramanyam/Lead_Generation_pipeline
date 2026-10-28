@@ -8,6 +8,20 @@ export class ConnectorError extends Error {
   }
 }
 
+export const IntegrationStatus = {
+  UNCONFIGURED: "unconfigured",
+  CONFIGURED: "configured",
+  CONNECTED: "connected",
+  RUNNING: "running",
+  FAILED: "failed",
+  UNAVAILABLE: "unavailable",
+  LEGACY: "legacy",
+};
+
+export function isLegacyStatus(status) {
+  return status === IntegrationStatus.LEGACY;
+}
+
 export function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -80,13 +94,25 @@ export function getConnector(id) {
 }
 
 export function listConnectors() {
-  return Array.from(registry.values()).map((c) => ({
-    id: c.id,
-    name: c.name,
-    capabilities: c.capabilities || [],
-    configSchema: c.configSchema || { required: [], optional: [] },
-    configured: typeof c.isConfigured === "function" ? c.isConfigured() : true,
-  }));
+  return Array.from(registry.values()).map((c) => {
+    const configured = typeof c.isConfigured === "function" ? c.isConfigured() : true;
+    let status = configured ? IntegrationStatus.CONFIGURED : IntegrationStatus.UNCONFIGURED;
+    if (c.statusOverride) status = c.statusOverride;
+    const legacy = typeof c.isLegacy === "function" ? c.isLegacy() : false;
+    if (legacy) status = IntegrationStatus.LEGACY;
+    return {
+      id: c.id,
+      name: c.name,
+      capabilities: c.capabilities || [],
+      configSchema: c.configSchema || { required: [], optional: [] },
+      configured,
+      status,
+      legacy,
+      provider: c.provider || null,
+      lastCheck: c.lastCheck || null,
+      error: c.lastError || null,
+    };
+  });
 }
 
 export function validateConnectorConfig(id, config) {

@@ -8,7 +8,7 @@ import { fileURLToPath } from "url";
 import path from "path";
 import dns from "node:dns/promises";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
-import { registerConnector, listConnectors, validateConnectorConfig, ConnectorError } from "./server/connectors/framework.js";
+import { registerConnector, listConnectors, validateConnectorConfig, ConnectorError, IntegrationStatus, getConnector } from "./server/connectors/framework.js";
 import osmConnector from "./server/connectors/osm.js";
 import webSearchConnector from "./server/connectors/webSearch.js";
 import { parseImportFile } from "./server/connectors/csvImport.js";
@@ -26,6 +26,26 @@ const app = express();
 
 registerConnector(osmConnector);
 registerConnector(webSearchConnector);
+
+registerConnector({
+  id: "google_maps_legacy",
+  name: "Google Maps browser scraping (legacy)",
+  capabilities: ["search"],
+  configSchema: { required: [], optional: [] },
+  isConfigured() { return false; },
+  isLegacy() { return true; },
+  validateConfig() { return { ok: false, errors: ["Legacy browser automation; compliance review required before production use"] }; },
+});
+
+registerConnector({
+  id: "whatsapp_web_legacy",
+  name: "WhatsApp Web automation (legacy/local-only)",
+  capabilities: ["messaging"],
+  configSchema: { required: [], optional: [] },
+  isConfigured() { return false; },
+  isLegacy() { return true; },
+  validateConfig() { return { ok: false, errors: ["Unofficial WhatsApp Web automation; not a supported production integration"] }; },
+});
 const DATA_DIR = path.join(__dirname, "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
@@ -1129,8 +1149,54 @@ app.post("/api/leads/merge/:historyId/undo", async (req, res) => {
 });
 
 // ─── Connector framework endpoints ─────────────────────────────────
+async function getConnectorStatus(tenantId, connector) {
+  // For now, return the connector's own status if it has getStatus
+  if (typeof connector.getStatus === "function") {
+    try {
+      const status = await connector.getStatus();
+      connector.lastCheck = status.lastCheck || connector.lastCheck;
+      connector.lastError = status.error ? status.error : null;
+      return { status: status.status, message: status.message, error: status.error, lastCheck: connector.lastCheck };
+    } catch (e) {
+      return { status: IntegrationStatus.FAILED, message: e.message, error: e.code || "status_check_failed" };
+    }
+  }
+  // Fallback to basic configured status
+  if (connector.isLegacy && connector.isLegacy()) {
+    return { status: IntegrationStatus.LEGACY, message: "Legacy integration", legacy: true };
+  }
+  const configured = typeof connector.isConfigured === "function" ? connector.isConfigured() : true;
+  return { status: configured ? IntegrationStatus.CONFIGURED : IntegrationStatus.UNCONFIGURED, message: configured ? "Configured" : "Not configured" };
+}
+
 app.get("/api/connectors", async (req, res) => {
-  res.json({ data: listConnectors() });
+  const tid = req.user.tenant_id;
+  const connectors = listConnectors();
+  const data = await Promise.all(connectors.map(async (c) => {
+    const original = getConnector(c.id);
+    const status = await getConnectorStatus(tid, original || c);
+    return { ...c, ...status };
+  }));
+  res.json({ data });
+});
+
+app.post("/api/connectors/:id/status", async (req, res) => {
+  const connector = getConnector(req.params.id);
+  if (!connector) return res.status(404).json({ error: "Connector not found" });
+  if (typeof connector.getStatus === "function") {
+    try {
+      const status = await connector.getStatus(req.body?.config || {});
+      return res.json(status);
+    } catch (e) {
+      return res.status(502).json({ status: IntegrationStatus.FAILED, message: e.message, error: e.code || "status_check_failed" });
+    }
+  }
+  // Fallback
+  if (connector.isLegacy && connector.isLegacy()) {
+    return res.json({ status: IntegrationStatus.LEGACY, message: "Legacy integration" });
+  }
+  const configured = typeof connector.isConfigured === "function" ? connector.isConfigured() : true;
+  res.json({ status: configured ? IntegrationStatus.CONFIGURED : IntegrationStatus.UNCONFIGURED, message: configured ? "Configured" : "Not configured" });
 });
 
 app.post("/api/connectors/:id/validate", async (req, res) => {

@@ -1,10 +1,11 @@
-import { ConnectorError, safeFetch, withRetry, sleep, normalizeLead } from "./framework.js";
+import { ConnectorError, safeFetch, withRetry, sleep, normalizeLead, IntegrationStatus } from "./framework.js";
 
 let lastRequestAt = 0;
 
 const osmConnector = {
   id: "osm",
   name: "OpenStreetMap (Nominatim)",
+  provider: "openstreetmap",
   capabilities: ["search"],
   configSchema: {
     required: [],
@@ -13,10 +14,38 @@ const osmConnector = {
   isConfigured() {
     return true;
   },
+  isLegacy() {
+    return false;
+  },
   validateConfig(config) {
     const errors = [];
     if (config?.baseUrl && !/^https?:\/\//.test(config.baseUrl)) errors.push("baseUrl must be an http(s) URL");
     return { ok: errors.length === 0, errors };
+  },
+  async getStatus(config = {}) {
+    this.lastCheck = new Date().toISOString();
+    try {
+      const baseUrl = (config.baseUrl || process.env.OSM_BASE_URL || "https://nominatim.openstreetmap.org").replace(/\/$/, "");
+      const testUrl = new URL(`${baseUrl}/search`);
+      testUrl.searchParams.set("q", "test");
+      testUrl.searchParams.set("format", "jsonv2");
+      testUrl.searchParams.set("limit", "1");
+      const userAgent = config.userAgent || process.env.OSM_USER_AGENT || "lead-pipeline/1.0 (contact: admin@example.com)";
+      const response = await safeFetch(testUrl.toString(), { headers: { "User-Agent": userAgent } }, 5000);
+      if (response.ok) {
+        this.lastError = null;
+        return { status: IntegrationStatus.CONNECTED, message: "OSM Nominatim reachable" };
+      }
+      if (response.status === 429) {
+        this.lastError = "Rate limited";
+        return { status: IntegrationStatus.UNAVAILABLE, message: "OSM rate limited", error: "rate_limited" };
+      }
+      this.lastError = `HTTP ${response.status}`;
+      return { status: IntegrationStatus.FAILED, message: `OSM returned ${response.status}`, error: `http_${response.status}` };
+    } catch (e) {
+      this.lastError = e.message;
+      return { status: IntegrationStatus.FAILED, message: e.message, error: e.code || "connection_failed" };
+    }
   },
   async search({ query = "", location = "", limit = 20, config = {} } = {}) {
     const q = [query, location].filter(Boolean).join(" ").trim();
