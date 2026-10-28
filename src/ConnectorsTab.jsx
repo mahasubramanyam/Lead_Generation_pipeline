@@ -238,10 +238,16 @@ export default function ConnectorsTab() {
         )}
       </div>
 
-      <div className="panel">
+<div className="panel">
         <h2>UK Companies House (company verification)</h2>
         <p className="desc">Official UK company registry. Requires a free API key (COMPANIES_HOUSE_API_KEY). Provides company name, number, status, registered address, SIC codes, and officers. No phone, email, or website in basic profile. License: Open Government Licence v3.0.</p>
         <p className="helper-text">Use the verify endpoint to look up a company by number, or search by name via the API. Data is for verification and enrichment, not primary lead discovery.</p>
+      </div>
+
+<div className="panel">
+        <h2>Norway Brønnøysund Register (Brreg)</h2>
+        <p className="desc">Official Norwegian business registry. No API key required. Free access. Provides company name, organisation number, registered address, NACE industry code, status, employee count, phone, email, and website (where available). License: NLOD 2.0 (Norwegian Licence for Open Government Data).</p>
+        <p className="helper-text">Search by company name. Results are paginated (max 100 per page). Deleted entities are automatically excluded. No personal identification data is fetched.</p>
       </div>
 
       <div className="panel">
