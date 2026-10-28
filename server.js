@@ -12,6 +12,7 @@ import { registerConnector, listConnectors, validateConnectorConfig, ConnectorEr
 import osmConnector from "./server/connectors/osm.js";
 import webSearchConnector from "./server/connectors/webSearch.js";
 import { parseImportFile } from "./server/connectors/csvImport.js";
+import companiesHouseConnector from "./server/connectors/companiesHouse.js";
 import fs from "fs";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -26,6 +27,7 @@ const app = express();
 
 registerConnector(osmConnector);
 registerConnector(webSearchConnector);
+registerConnector(companiesHouseConnector);
 
 registerConnector({
   id: "google_maps_legacy",
@@ -1259,6 +1261,42 @@ app.post("/api/connectors/web-search/search", async (req, res) => {
   } catch (e) {
     const status = e.code === "not_configured" || e.code === "invalid_query" || e.code === "invalid_country" ? 400 : 502;
     res.status(status).json({ error: e.message, code: e.code || "connector_error", details: e.details });
+  }
+});
+
+app.post("/api/connectors/companies-house/search", async (req, res) => {
+  const { query, limit = 20, config } = req.body || {};
+  const tid = req.user.tenant_id;
+  try {
+    if (limit && (Number(limit) < 1 || Number(limit) > 100)) {
+      return res.status(400).json({ error: "limit must be between 1 and 100" });
+    }
+    const result = await companiesHouseConnector.search({ query, limit, config: config || {} });
+    const { results } = result;
+    let inserted = 0;
+    let updated = 0;
+    const leadIds = [];
+    for (const r of results) {
+      const out = await upsertBusiness(r, r.location_query || "", tid);
+      if (out.inserted) inserted++; else updated++;
+      leadIds.push(out.id);
+    }
+    res.json({ ok: true, provider: "companies_house", count: results.length, inserted, updated, leadIds, totalCount: result.totalCount, attribution: result.attribution, license: result.license });
+  } catch (e) {
+    const status = e.code === "not_configured" || e.code === "invalid_query" ? 400 : (e.code === "rate_limited" ? 429 : (e.code === "auth_failed" ? 401 : 502));
+    res.status(status).json({ error: e.message, code: e.code || "connector_error" });
+  }
+});
+
+app.post("/api/connectors/companies-house/verify", async (req, res) => {
+  const { companyNumber, config } = req.body || {};
+  const tid = req.user.tenant_id;
+  try {
+    const result = await companiesHouseConnector.getCompany(companyNumber, config || {});
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    const status = e.code === "not_configured" ? 400 : (e.code === "invalid_input" ? 400 : (e.code === "not_found" ? 404 : (e.code === "rate_limited" ? 429 : (e.code === "auth_failed" ? 401 : 502))));
+    res.status(status).json({ error: e.message, code: e.code || "connector_error" });
   }
 });
 

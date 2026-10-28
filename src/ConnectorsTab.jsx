@@ -207,7 +207,7 @@ export default function ConnectorsTab() {
         )}
       </div>
 
-      <div className="panel">
+<div className="panel">
         <h2>Web search connector</h2>
         <p className="desc">Configure via request config or environment: WEB_SEARCH_PROVIDER (brave|bing|google_cse) and WEB_SEARCH_API_KEY. No fake results are returned when unconfigured.</p>
         <div className="row">
@@ -236,6 +236,18 @@ export default function ConnectorsTab() {
             {webSearchStatus.error && <span className="mono" style={{ marginLeft: 8 }}>({webSearchStatus.error})</span>}
           </div>
         )}
+      </div>
+
+      <div className="panel">
+        <h2>UK Companies House (company verification)</h2>
+        <p className="desc">Official UK company registry. Requires a free API key (COMPANIES_HOUSE_API_KEY). Provides company name, number, status, registered address, SIC codes, and officers. No phone, email, or website in basic profile. License: Open Government Licence v3.0.</p>
+        <p className="helper-text">Use the verify endpoint to look up a company by number, or search by name via the API. Data is for verification and enrichment, not primary lead discovery.</p>
+      </div>
+
+      <div className="panel">
+        <h2>UK Companies House (company verification)</h2>
+        <p className="desc">Official UK company registry. Requires a free API key (COMPANIES_HOUSE_API_KEY). Provides company name, number, status, registered address, SIC codes, and officers. No phone, email, or website in basic profile. License: Open Government Licence v3.0.</p>
+        <p className="helper-text">Use the verify endpoint to look up a company by number, or search by name via the API.</p>
       </div>
     </div>
   );
