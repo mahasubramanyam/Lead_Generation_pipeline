@@ -36,9 +36,10 @@ describe("Connector framework", () => {
     assert.equal(r.body.code, "not_configured");
   });
 
-  it("osm search requires query or location", async () => {
+  it("osm search is disabled in production (compliance)", async () => {
     const r = await json("POST", "/connectors/osm/search", { query: "", location: "", limit: 5 });
-    assert.equal(r.status, 400);
+    assert.equal(r.status, 503);
+    assert.equal(r.body.code, "compliance_restricted");
     assert.ok(r.body.error);
   });
 

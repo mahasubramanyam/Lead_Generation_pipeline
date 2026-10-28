@@ -1211,6 +1211,9 @@ app.post("/api/connectors/:id/validate", async (req, res) => {
 app.post("/api/connectors/osm/search", async (req, res) => {
   const { query, location, country, category, limit = 20, config } = req.body || {};
   const tid = req.user.tenant_id;
+  if (process.env.NODE_ENV === "production") {
+    return res.status(503).json({ error: "Public OSM/Nominatim business discovery is disabled in production: the OSMF Nominatim Usage Policy forbids systematic POI queries and reselling of geocoding results. Deploy a self-hosted Nominatim instance or use a compliant third-party provider.", code: "compliance_restricted" });
+  }
   try {
     if (limit && (Number(limit) < 1 || Number(limit) > 50)) {
       return res.status(400).json({ error: "limit must be between 1 and 50" });
@@ -1227,7 +1230,7 @@ app.post("/api/connectors/osm/search", async (req, res) => {
     }
     res.json({ ok: true, provider: "openstreetmap", count: results.length, inserted, updated, leadIds, countryFilter: result.countryFilter, categoryFilter: result.categoryFilter });
   } catch (e) {
-    const status = e.code === "invalid_query" || e.code === "invalid_country" ? 400 : (e.code === "rate_limited" ? 429 : 502);
+    const status = e.code === "invalid_query" || e.code === "invalid_country" ? 400 : (e.code === "rate_limited" ? 429 : (e.code === "compliance_restricted" ? 503 : 502));
     res.status(status).json({ error: e.message, code: e.code || "connector_error" });
   }
 });

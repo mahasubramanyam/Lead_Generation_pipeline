@@ -105,10 +105,10 @@ describe("E1 endpoint validation", () => {
     assert.ok(r.body.error.includes("limit"));
   });
 
-  it("OSM search rejects invalid country", async () => {
+  it("OSM search is disabled in production (compliance)", async () => {
     const r = await json("POST", "/connectors/osm/search", { query: "test", location: "Berlin", country: "zzz" });
-    assert.equal(r.status, 400);
-    assert.ok(r.body.error.includes("country"));
+    assert.equal(r.status, 503);
+    assert.equal(r.body.code, "compliance_restricted");
   });
 
   it("web search search rejects invalid limit", async () => {

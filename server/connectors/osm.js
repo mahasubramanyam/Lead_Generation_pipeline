@@ -1,4 +1,23 @@
+// ─── OSM / Nominatim compliance notice ─────────────────────────────
+// The public Nominatim service at nominatim.openstreetmap.org is governed
+// by the OSMF Nominatim Usage Policy (https://operations.osmfoundation.org/policies/nominatim).
+// That policy explicitly forbids:
+//   - "Systematic queries" (downloading all POIs in an area)
+//   - "Reselling of geocoding results" (apps whose primary function is geocoding)
+//   - Bulk geocoding of larger amounts of data
+// Business lead discovery via public Nominatim search cannot be demonstrated
+// to comply with these restrictions. Therefore, in production (NODE_ENV=production),
+// public Nominatim business discovery is DISABLED. The connector returns an explicit
+// unavailable status and an actionable error. No mock data or fallback is provided.
+// For production use, deploy a self-hosted Nominatim instance or use a compliant
+// third-party provider. See the E2a audit for details.
+// ─────────────────────────────────────────────────────────────────────
+
 import { ConnectorError, safeFetch, withRetry, sleep, normalizeLead, IntegrationStatus } from "./framework.js";
+
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+const COMPLIANCE_MESSAGE = "Public Nominatim business discovery is disabled in production: the OSMF Nominatim Usage Policy forbids systematic POI queries and reselling of geocoding results for lead discovery. Deploy a self-hosted Nominatim instance or use a compliant third-party provider. See https://operations.osmfoundation.org/policies/nominatim";
 
 let lastRequestAt = 0;
 
@@ -40,7 +59,9 @@ const osmConnector = {
     optional: ["baseUrl", "userAgent", "email", "country"],
   },
   isConfigured() {
-    return true;
+    // Public Nominatim is not approved for production business discovery.
+    // In non-production, the connector is available for testing.
+    return !IS_PRODUCTION;
   },
   isLegacy() {
     return false;
@@ -51,10 +72,17 @@ const osmConnector = {
     if (config?.country && !VALID_COUNTRY_CODES.has(String(config.country).toLowerCase())) {
       errors.push("country must be a valid ISO 3166-1 alpha-2 code");
     }
+    if (IS_PRODUCTION) {
+      errors.push(COMPLIANCE_MESSAGE);
+    }
     return { ok: errors.length === 0, errors };
   },
   async getStatus(config = {}) {
     this.lastCheck = new Date().toISOString();
+    if (IS_PRODUCTION) {
+      this.lastError = "compliance_restricted";
+      return { status: IntegrationStatus.UNAVAILABLE, message: COMPLIANCE_MESSAGE, error: "compliance_restricted" };
+    }
     try {
       const baseUrl = (config.baseUrl || process.env.OSM_BASE_URL || "https://nominatim.openstreetmap.org").replace(/\/$/, "");
       const testUrl = new URL(`${baseUrl}/search`);
@@ -79,6 +107,9 @@ const osmConnector = {
     }
   },
   async search({ query = "", location = "", country = "", category = "", limit = 20, config = {} } = {}) {
+    if (IS_PRODUCTION) {
+      throw new ConnectorError("compliance_restricted", COMPLIANCE_MESSAGE);
+    }
     const q = [category, query, location].filter(Boolean).join(" ").trim();
     if (!q) throw new ConnectorError("invalid_query", "query, category, or location is required");
     const boundedLimit = Math.min(Math.max(1, Number(limit) || 20), 50);
